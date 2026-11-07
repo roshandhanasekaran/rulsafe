@@ -163,13 +163,13 @@ def load_config(path: str | Path) -> RunConfig:
 def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> RunResult:
     """Run the implemented completed-trajectory check.
 
-    Group holdout on CSV files is implemented. The constant baseline and the
-    histogram gradient boosting baseline are fit on training rows only. Early
-    stopping uses the validation split. ``censored_policy`` ``report`` keeps
-    censored histories in the JSON report and out of every split. ``reject``
-    writes a partial report with status ``FAILED`` and no metrics, then raises.
-    Official partitions and the C-MAPSS demo need offline files that this
-    package does not download.
+    Group holdout and official partition files are implemented for CSV and
+    Parquet. The constant baseline and the histogram gradient boosting
+    baseline are fit on training rows only. Early stopping uses the validation
+    split. ``censored_policy`` ``report`` keeps censored histories in the JSON
+    report and out of every split. ``reject`` writes a partial report with
+    status ``FAILED`` and no metrics, then raises. C-MAPSS FD001 is fetched
+    separately and is not stored in the package.
 
     Args:
         config: Validated run configuration.
@@ -185,12 +185,12 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
             unsupported history is present. The partial report is written
             before this exception, or the training split has no target.
     """
-    from rulsafe.pipeline.execute import execute_group_holdout
+    from rulsafe.pipeline.execute import execute_configured_run
 
     destination = (
         output_directory if output_directory is not None else Path(config.report.output_dir)
     )
-    leakage, metrics, document = execute_group_holdout(config, destination)
+    leakage, metrics, document = execute_configured_run(config, destination)
     report_path = destination / "report.json"
     return RunResult(
         leakage=leakage,

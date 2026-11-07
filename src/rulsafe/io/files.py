@@ -1,7 +1,8 @@
 """CSV and Parquet table paths.
 
-CSV files are read here. Parquet is accepted by the contract and still
-raises ``NotImplementedError``. An unsupported suffix is rejected.
+CSV and Parquet files are read here. An unsupported suffix is rejected.
+Parquet cells are converted to strings so the rest of the pipeline sees the
+same kind of row it sees from CSV.
 """
 
 import csv
@@ -10,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rulsafe.contract import LogicalTableRole, table_suffix_is_supported
-from rulsafe.exceptions import ConfigurationError, not_implemented
+from rulsafe.exceptions import ConfigurationError
 
 
 @dataclass(frozen=True)
@@ -41,15 +42,17 @@ def load_table(path: Path, role: LogicalTableRole) -> LoadedTable:
         The loaded table.
 
     Raises:
-        ConfigurationError: The suffix is not supported, or the CSV cannot be read.
-        NotImplementedError: The file is Parquet. That reader is not implemented yet.
+        ConfigurationError: The suffix is not supported, or the table cannot be read.
     """
     if not table_suffix_is_supported(path):
         raise ConfigurationError(
             f"Unsupported table file {path.name}. Expected a .csv or .parquet file."
         )
     if path.suffix.casefold() == ".parquet":
-        raise not_implemented("load_table", path, role)
+        rows = _parquet_rows(path)
+        if not rows:
+            raise ConfigurationError(f"Table file {path} has no data rows.")
+        return LoadedTable(role=role, path=path, row_count=len(rows), rows=rows)
     if not path.is_file():
         raise ConfigurationError(f"Could not read table file {path}.")
     try:
@@ -60,6 +63,39 @@ def load_table(path: Path, role: LogicalTableRole) -> LoadedTable:
     if not rows:
         raise ConfigurationError(f"Table file {path} has no data rows.")
     return LoadedTable(role=role, path=path, row_count=len(rows), rows=rows)
+
+
+def _parquet_rows(path: Path) -> tuple[Mapping[str, str], ...]:
+    """Read a Parquet file into string rows.
+
+    Args:
+        path: Parquet path.
+
+    Returns:
+        One mapping per row. Column order follows the file schema.
+
+    Raises:
+        ConfigurationError: The file cannot be read.
+    """
+    if not path.is_file():
+        raise ConfigurationError(f"Could not read table file {path}.")
+    try:
+        import pyarrow.parquet as parquet  # type: ignore[import-untyped]
+    except ImportError as error:
+        raise ConfigurationError("Reading Parquet requires pyarrow.") from error
+    try:
+        table = parquet.read_table(path)
+    except Exception as error:
+        raise ConfigurationError(f"Could not read table file {path}.") from error
+    names = list(table.column_names)
+    parsed: list[Mapping[str, str]] = []
+    for record in table.to_pylist():
+        if not isinstance(record, dict):
+            raise ConfigurationError(f"Table file {path} has a row that is not a mapping.")
+        parsed.append(
+            {name: "" if record.get(name) is None else str(record.get(name)) for name in names}
+        )
+    return tuple(parsed)
 
 
 def _csv_rows(text: str, path: Path) -> tuple[Mapping[str, str], ...]:

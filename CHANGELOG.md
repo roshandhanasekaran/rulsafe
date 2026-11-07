@@ -12,7 +12,7 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Dataset cards for C-MAPSS FD001 (v0.1 demo; NASA catalogue licence not specified; Zenodo CC BY 4.0 kept separate) and SCANIA Component X (v0.2, CC BY 4.0, 105 signal columns).
 - Audit helpers that record a missing check as `NOT_CHECKED` rather than a pass.
 - Report metrics serialise as `{"value": null, "status": "DISABLED"}` or `{"value": null, "status": "NOT_COMPUTED"}` when they have no number. A computed metric uses the same keys with a finite value and `"COMPUTED"`.
-- Command-line commands for the later pipeline. `validate` and `datasets list` work. `demo cmapss` does not download FD001.
+- Command-line commands for the later pipeline. `validate` and `datasets list` work. `demo cmapss` reads converted tables and does not download them.
 - Ruff, mypy, pytest, pre-commit, bandit, gitleaks, and pip-audit wiring.
 
 ### Added
@@ -30,8 +30,9 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - `censored_policy: reject` writes a partial report with status `FAILED`, lists the contract violations, omits metrics, and then raises. `censored_policy: report` excludes the history from every split, continues, and names it in the report.
 - `min_assets_per_split` defaults to 3. A smaller split is a warning in `risks`. The synthetic demo's one-asset validation and test splits warn, and their scores stay `COMPUTED`. An empty split is `NOT_COMPUTED` with that reason in `risks`.
 - Ruff's `target-version` is `py311`.
-- `scikit-learn` is a runtime dependency. The hashed locks for Python 3.11, 3.12, and 3.13 include it.
+- `scikit-learn` and `pyarrow` are runtime dependencies. The hashed locks for Python 3.11, 3.12, and 3.13 include them. `pyarrow` is pinned at 23.0.1 or newer so the lock is clear of PYSEC-2026-113.
+- `rulsafe data fetch cmapss` downloads the NASA Prognostics outer zip, checks the pinned outer and inner SHA-256 values, and writes git-ignored FD001 Parquet tables. `--from-file` accepts a local outer or inner zip. Completed training engines are split in unit-number order. NASA test engines are censored and excluded. `RUL_FD001.txt` is not a label. See [docs/cmapss-fd001.md](docs/cmapss-fd001.md).
 
 ### Not in this release
 
-- Official C-MAPSS partition scoring, HTML reports, and dataset downloads. `rulsafe demo cmapss` does not download FD001.
+- HTML reports. FD002–FD004 are not converted. The raw C-MAPSS archive is not committed.

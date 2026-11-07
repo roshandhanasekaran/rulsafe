@@ -1,13 +1,17 @@
-# C-MAPSS FD001 is a completed-trajectory demo, not a typical censored fleet.
-# Score test engines at the last observation only.
-# The NASA catalog does not state a licence. A separate Zenodo record uses CC BY 4.0
-# for that record only. Do not merge those statements.
+# C-MAPSS FD001 completed-trajectory demo.
+# rulsafe data fetch cmapss writes these files from the NASA archive.
+# Only the 100 training engines, which run to failure, are scored.
+# The NASA test engines stop before failure. They are censored, listed, and
+# excluded from train, validation, and test. Their RUL file is not a label.
+# The NASA catalog does not state a licence. A separate Zenodo record uses
+# CC BY 4.0 for that record only. Do not merge those statements.
 
 project:
-  name: cmapss-fd001-last-observation
+  name: cmapss-fd001-completed-trajectory
   seed: 7
   notes: >
-    Completed-trajectory demo. Licence is not specified on the NASA catalog page.
+    Completed training trajectories only. NASA test trajectories are censored
+    and excluded. Licence is not specified on the NASA catalog page.
     Zenodo doi:10.5281/zenodo.15346912 states CC BY 4.0 for that record only.
 
 connector:
@@ -38,7 +42,8 @@ events:
   type_column: event_type
   terminal_types:
     - failure
-  competing_types: []
+  competing_types:
+    - censored
   forbidden_as_features: []
 
 contract:
@@ -48,10 +53,10 @@ contract:
   replacement_types: []
 
 labeling:
-  task: cmapss_last_observation
+  task: completed_trajectory_rul
   horizon: null
   unit: cycles
-  censored_policy: reject
+  censored_policy: report
 
 windows:
   lookback: 16
@@ -111,5 +116,5 @@ report:
   formats:
     - html
     - json
-  title: "C-MAPSS FD001 last-observation check"
+  title: "C-MAPSS FD001 completed-trajectory check"
   output_dir: ./rulsafe-runs

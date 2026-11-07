@@ -37,7 +37,7 @@ Run the synthetic completed-trajectory demo from the repository root. It writes 
 rulsafe demo synthetic --output ./rulsafe-runs/synthetic
 ```
 
-`rulsafe demo cmapss` does not download FD001. The NASA catalog licence is not specified. If the offline files named in `examples/cmapss_fd001_completed_trajectory.yaml` are absent, the command exits with code 2 and the tree metrics for that demo are not computed. These commands still exit with code 2:
+`rulsafe data fetch cmapss` downloads the NASA Prognostics outer zip, checks the outer and inner SHA-256 pins, and writes git-ignored FD001 tables. The NASA catalog licence is not specified. See [C-MAPSS FD001](docs/cmapss-fd001.md). Only the 100 completed training engines are scored. The 100 NASA test engines are censored and excluded, and `RUL_FD001.txt` is not used as a label. `rulsafe demo cmapss` reads those tables. If they are absent the command exits with code 2 and the tree metrics for that demo are not computed. These commands still exit with code 2:
 
 ```bash
 rulsafe demo cmapss --output ./rulsafe-runs/demo
@@ -68,6 +68,7 @@ List datasets. Access and licence are separate lines. C-MAPSS prints "not specif
 
 ```bash
 rulsafe datasets list
+rulsafe data fetch cmapss
 rulsafe datasets fetch cmapss_fd001
 rulsafe datasets fetch scania_component_x
 ```

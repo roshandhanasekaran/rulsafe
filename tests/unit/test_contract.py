@@ -34,7 +34,7 @@ def test_required_columns_and_episode_default() -> None:
 def test_unsupported_suffix_is_rejected_before_read() -> None:
     with pytest.raises(ConfigurationError, match="parquet"):
         load_table(Path("signals.xlsx"), LogicalTableRole.SIGNALS)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ConfigurationError, match="Could not read"):
         load_table(Path("signals.parquet"), LogicalTableRole.SIGNALS)
 
 
@@ -122,8 +122,6 @@ def test_dataset_cards_keep_licence_statements_separate() -> None:
     assert fleet_alert_coverage() == "not_covered"
     with pytest.raises(ConfigurationError, match=r"v0\.2"):
         fetch_dataset("scania_component_x")
-    with pytest.raises(NotImplementedError):
-        fetch_dataset("cmapss_fd001")
     with pytest.raises(ConfigurationError, match="Unknown dataset"):
         dataset_card("not-a-dataset")
 

@@ -35,7 +35,7 @@ def test_validate_accepts_cmapss_and_rejects_scania(repository_root: Path) -> No
     cmapss = repository_root / "examples" / "cmapss_fd001_completed_trajectory.yaml"
     accepted = runner.invoke(app, ["validate", "--config", str(cmapss)])
     assert accepted.exit_code == 0
-    assert "cmapss-fd001-last-observation" in accepted.stdout
+    assert "cmapss-fd001-completed-trajectory" in accepted.stdout
 
     scania = repository_root / "examples" / "scania_component_x.yaml"
     rejected = runner.invoke(app, ["validate", "--config", str(scania)])
@@ -43,10 +43,18 @@ def test_validate_accepts_cmapss_and_rejects_scania(repository_root: Path) -> No
     assert "v0.2" in rejected.stdout
 
 
-def test_demo_cmapss_is_not_implemented_and_scania_is_refused() -> None:
+def test_demo_cmapss_without_tables_tells_you_to_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_is_file = Path.is_file
+
+    def hide_cmapss_tables(self: Path) -> bool:
+        if "cmapss" in self.parts and self.suffix in {".parquet", ".txt"}:
+            return False
+        return real_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", hide_cmapss_tables)
     cmapss = runner.invoke(app, ["demo", "cmapss"])
     assert cmapss.exit_code == 2
-    assert "not downloaded" in cmapss.stdout.lower()
+    assert "data fetch cmapss" in cmapss.stdout
     assert "not computed" in cmapss.stdout.lower()
 
     scania = runner.invoke(app, ["demo", "scania"])
@@ -67,17 +75,35 @@ def test_dataset_list_and_fetch_keep_licences_separate() -> None:
     assert "CC BY 4.0" in fetched.stdout
     assert "v0.2" in fetched.stdout
 
-    cmapss_fetch = runner.invoke(app, ["datasets", "fetch", "cmapss_fd001"])
-    assert cmapss_fetch.exit_code == 2
-    assert "not specified" in cmapss_fetch.stdout.lower()
-    assert "not implemented" in cmapss_fetch.stdout.lower()
+    refused = runner.invoke(app, ["data", "fetch", "cmapss", "--from-file", "missing-cmapss.zip"])
+    assert refused.exit_code == 2
+    assert "could not read archive" in refused.stdout.lower()
+    unknown = runner.invoke(app, ["data", "fetch", "scania"])
+    assert unknown.exit_code == 2
+    assert "unknown dataset" in unknown.stdout.lower()
 
 
-def test_cached_cmapss_files_are_not_the_synthetic_slice(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(Path, "is_file", lambda _self: True)
-    result = runner.invoke(app, ["demo", "cmapss"])
-    assert result.exit_code == 2
-    assert "not implemented" in result.stdout.lower()
+def test_data_fetch_from_file_uses_the_local_archive(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: dict[str, Path | None] = {}
+
+    def fake_fetch(destination: Path, *, archive: Path | None = None) -> Path:
+        seen["destination"] = destination
+        seen["archive"] = archive
+        return destination
+
+    monkeypatch.setattr("rulsafe.datasets.cmapss_convert.fetch_cmapss_fd001", fake_fetch)
+    archive = tmp_path / "CMAPSSData.zip"
+    archive.write_bytes(b"local")
+    result = runner.invoke(
+        app,
+        ["data", "fetch", "cmapss", "--from-file", str(archive), "--output", str(tmp_path / "out")],
+    )
+    assert result.exit_code == 0
+    assert seen["archive"] == archive
+    assert seen["destination"] == tmp_path / "out"
+    assert "not specified" in result.stdout.lower()
 
 
 def test_demo_synthetic_writes_the_censored_asset(tmp_path: Path) -> None:

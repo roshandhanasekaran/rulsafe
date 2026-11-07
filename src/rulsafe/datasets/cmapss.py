@@ -14,9 +14,13 @@ CMAPSS_FD001 = DatasetCard(
     name="cmapss_fd001",
     available_in="0.1",
     access=(
-        "Public NASA Open Data catalog page for the C-MAPSS turbofan degradation "
-        "simulation. FD001 is listed as 100 training engines and 100 test engines. "
-        "The catalog objective is remaining cycles after the last observed cycle."
+        "NASA Prognostics Data Repository zip "
+        "https://phm-datasets.s3.amazonaws.com/NASA/"
+        "6.+Turbofan+Engine+Degradation+Simulation+Data+Set.zip "
+        "which contains CMAPSSData.zip. The catalog page is "
+        "https://data.nasa.gov/dataset/cmapss-jet-engine-simulated-data . "
+        "FD001 is 100 training engines that run to failure and 100 test engines "
+        "that stop before failure. v0.1 scores only the completed training engines."
     ),
     licence=None,
     licence_statement=(

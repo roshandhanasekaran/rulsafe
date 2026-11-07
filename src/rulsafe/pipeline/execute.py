@@ -1,10 +1,11 @@
-"""Run a completed-trajectory check for group holdout and CSV inputs.
+"""Run a completed-trajectory check for CSV or Parquet inputs.
 
 The constant baseline and the histogram gradient boosting baseline are fit
 on training rows only. Early stopping uses the validation split when that
 split has scored rows. ``censored_policy`` ``reject`` writes a partial report
 with status ``FAILED`` and no metrics, then stops. ``report`` leaves those
-histories out of every split, continues, and names them.
+histories out of every split, continues, and names them. Official partition
+files are used as written and are not shuffled.
 """
 
 import json
@@ -47,43 +48,44 @@ from rulsafe.pipeline.labels import (
     assign_remaining_life,
     disposition_for_history,
 )
-from rulsafe.pipeline.split import SplitName, assign_splits, split_size_risks
+from rulsafe.pipeline.split import (
+    SplitName,
+    assign_official_partitions,
+    assign_splits,
+    read_split_ids,
+    split_size_risks,
+)
 from rulsafe.report.json import MetricComputationStatus, MetricValue
 
 
-def execute_group_holdout(
+def execute_configured_run(
     config: RunConfig, output_directory: Path
 ) -> tuple[
     LeakageSuiteResult,
     MetricsReport,
     dict[str, object],
 ]:
-    """Run the implemented slice and build the JSON document.
+    """Run group holdout or official partitions and build the JSON document.
 
     Args:
-        config: Validated configuration. The protocol must be group holdout.
+        config: Validated configuration.
         output_directory: Directory for ``report.json``.
 
     Returns:
         The leakage result, metrics, and the JSON-ready document.
 
     Raises:
-        ConfigurationError: The files or the protocol cannot be used for this slice.
+        ConfigurationError: The files or the protocol cannot be used.
         ContractError: ``censored_policy`` is ``reject`` and a censored or
             unsupported history is present. A partial report with status
             ``FAILED`` and no metrics is written first.
     """
-    holdout = config.split.group_holdout
-    if config.split.protocol is not SplitProtocol.GROUP_HOLDOUT or holdout is None:
-        raise ConfigurationError(
-            "This run implements group_holdout on CSV files. "
-            "official_partitions and cmapss are not implemented yet."
-        )
     tables = LogicalTables(
         assets=load_table(Path(config.connector.assets), LogicalTableRole.ASSETS),
         signals=load_table(Path(config.connector.signals), LogicalTableRole.SIGNALS),
         events=load_table(Path(config.connector.events), LogicalTableRole.EVENTS),
     )
+    config = _resolve_auto_features(config, tables.signals.rows)
     episodes = build_episodes(tables, config)
     supervised, excluded = _separate_training_histories(episodes, config)
     censored_ids = tuple(
@@ -99,14 +101,7 @@ def execute_group_holdout(
         output_directory,
     )
     labeled = _labeled_rows(supervised, config)
-    split = assign_splits(
-        config.split.protocol,
-        group_identifiers=tuple(episode.asset_id for episode in supervised),
-        train_ratio=holdout.train_ratio,
-        validation_ratio=holdout.validation_ratio,
-        test_ratio=holdout.test_ratio,
-        seed=config.project.seed,
-    )
+    split = _assign_split(config, tuple(episode.asset_id for episode in supervised))
     minimum = config.split.min_assets_per_split
     risks: list[dict[str, object]] = list(split_size_risks(split, minimum=minimum))
     rows_by_split = {
@@ -153,6 +148,83 @@ def execute_group_holdout(
     )
     _write_report(document, output_directory)
     return leakage, metrics, document
+
+
+def _resolve_auto_features(
+    config: RunConfig,
+    signal_rows: Sequence[Mapping[str, str]],
+) -> RunConfig:
+    """Replace ``feature_columns: auto`` with the signal columns that are not ids.
+
+    Args:
+        config: Validated configuration.
+        signal_rows: Loaded signal rows. Key order of the first row is kept.
+
+    Returns:
+        The same configuration when the allowlist is already explicit.
+        Otherwise a copy whose feature list omits the identifier, the time
+        columns, and ``exclude_columns``.
+
+    Raises:
+        ConfigurationError: Auto resolution would leave no feature column.
+    """
+    if isinstance(config.signals.feature_columns, list):
+        return config
+    if not signal_rows:
+        raise ConfigurationError(
+            "The signal table has no rows, so auto features cannot be resolved."
+        )
+    banned = {
+        config.signals.id_column,
+        config.signals.event_time_column,
+        *config.signals.exclude_columns,
+    }
+    if config.signals.available_at_column is not None:
+        banned.add(config.signals.available_at_column)
+    features = [name for name in signal_rows[0] if name not in banned]
+    if not features:
+        raise ConfigurationError("feature_columns: auto resolved to an empty allowlist.")
+    signals = config.signals.model_copy(update={"feature_columns": features})
+    return config.model_copy(update={"signals": signals})
+
+
+def _assign_split(
+    config: RunConfig, group_identifiers: Sequence[str]
+) -> dict[SplitName, tuple[str, ...]]:
+    """Build the train, validation, and test membership.
+
+    Args:
+        config: Validated configuration.
+        group_identifiers: Completed asset ids.
+
+    Returns:
+        Asset ids by split.
+
+    Raises:
+        ConfigurationError: The selected protocol block is missing or the
+            official id files do not match the completed assets.
+    """
+    if config.split.protocol is SplitProtocol.GROUP_HOLDOUT:
+        holdout = config.split.group_holdout
+        if holdout is None:
+            raise ConfigurationError("group_holdout requires its settings block.")
+        return assign_splits(
+            config.split.protocol,
+            group_identifiers=group_identifiers,
+            train_ratio=holdout.train_ratio,
+            validation_ratio=holdout.validation_ratio,
+            test_ratio=holdout.test_ratio,
+            seed=config.project.seed,
+        )
+    partitions = config.split.official_partitions
+    if partitions is None:
+        raise ConfigurationError("official_partitions requires its id files.")
+    return assign_official_partitions(
+        group_identifiers,
+        train_ids=read_split_ids(Path(partitions.train_ids)),
+        validation_ids=read_split_ids(Path(partitions.validation_ids)),
+        test_ids=read_split_ids(Path(partitions.test_ids)),
+    )
 
 
 def _separate_training_histories(

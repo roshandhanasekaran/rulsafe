@@ -25,8 +25,8 @@ def test_completed_trajectory_examples_load(load_example) -> None:
     ]
     assert tuple(synthetic.leakage.fail_on) == DEFAULT_FAIL_ON_CHECKS
     assert tuple(synthetic.leakage.warn_on) == DEFAULT_WARN_ON_CHECKS
-    assert cmapss.labeling.task.value == "cmapss_last_observation"
-    assert cmapss.labeling.censored_policy.value == "reject"
+    assert cmapss.labeling.task.value == "completed_trajectory_rul"
+    assert cmapss.labeling.censored_policy.value == "report"
     assert cmapss.split.protocol.value == "official_partitions"
     assert cmapss.signals.available_at_column is None
 
@@ -202,5 +202,5 @@ def test_load_config_reads_the_cmapss_example(repository_root: Path) -> None:
     from rulsafe import load_config
 
     loaded = load_config(repository_root / "examples" / "cmapss_fd001_completed_trajectory.yaml")
-    assert loaded.project.name == "cmapss-fd001-last-observation"
+    assert loaded.project.name == "cmapss-fd001-completed-trajectory"
     assert "not specified" in loaded.project.notes.lower()

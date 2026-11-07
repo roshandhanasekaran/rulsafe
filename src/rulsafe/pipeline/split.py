@@ -9,6 +9,7 @@ once after that choice is frozen.
 import random
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
+from pathlib import Path
 
 from rulsafe.config import DEFAULT_MIN_ASSETS_PER_SPLIT, SplitProtocol
 from rulsafe.exceptions import ConfigurationError, not_implemented
@@ -79,6 +80,109 @@ def assign_splits(
         SplitName.TRAIN: tuple(ordered[:train_end]),
         SplitName.VALIDATION: tuple(ordered[train_end:validation_end]),
         SplitName.TEST: tuple(ordered[validation_end:]),
+    }
+
+
+def read_split_ids(path: Path) -> tuple[str, ...]:
+    """Read one asset id per line.
+
+    Args:
+        path: Text file of asset ids.
+
+    Returns:
+        Ids in file order, with blank lines ignored.
+
+    Raises:
+        ConfigurationError: The file is missing, empty, or repeats an id.
+    """
+    if not path.is_file():
+        raise ConfigurationError(f"Could not read split id file {path}.")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise ConfigurationError(f"Could not read split id file {path}.") from error
+    identifiers = tuple(line.strip() for line in text.splitlines() if line.strip())
+    if not identifiers:
+        raise ConfigurationError(f"Split id file {path} has no asset ids.")
+    if len(identifiers) != len(set(identifiers)):
+        raise ConfigurationError(f"Split id file {path} repeats an asset id.")
+    return identifiers
+
+
+def assign_official_partitions(
+    group_identifiers: Sequence[str],
+    *,
+    train_ids: Sequence[str],
+    validation_ids: Sequence[str],
+    test_ids: Sequence[str],
+) -> dict[SplitName, tuple[str, ...]]:
+    """Place each completed asset on the official id-file split.
+
+    The files are not shuffled. An asset that is not in exactly one file is
+    an error. Censored assets are not passed in ``group_identifiers``; an id
+    file that names one of them fails because that id is not a scored asset.
+
+    Args:
+        group_identifiers: Completed asset ids that must be placed.
+        train_ids: Train ids in file order.
+        validation_ids: Validation ids in file order.
+        test_ids: Final-test ids in file order.
+
+    Returns:
+        Asset ids by split, in the id-file order.
+
+    Raises:
+        ConfigurationError: The files overlap, or they are not exactly the
+            completed assets.
+    """
+    groups = tuple(dict.fromkeys(group_identifiers))
+    listed = (tuple(train_ids), tuple(validation_ids), tuple(test_ids))
+    combined = listed[0] + listed[1] + listed[2]
+    if len(combined) != len(set(combined)):
+        raise ConfigurationError("An asset id is in more than one official partition.")
+    missing = sorted(set(groups) - set(combined))
+    extra = sorted(set(combined) - set(groups))
+    if missing or extra:
+        raise ConfigurationError(
+            "Official partition files must list each completed asset once and "
+            f"no other asset. Missing: {missing or 'none'}. Extra: {extra or 'none'}."
+        )
+    return {
+        SplitName.TRAIN: listed[0],
+        SplitName.VALIDATION: listed[1],
+        SplitName.TEST: listed[2],
+    }
+
+
+def partition_in_given_order(
+    identifiers: Sequence[str],
+    ratios: tuple[float, float, float] = (0.70, 0.15, 0.15),
+) -> dict[SplitName, tuple[str, ...]]:
+    """Assign ids in the order given, without shuffling.
+
+    Args:
+        identifiers: Asset ids already sorted by the caller.
+        ratios: Train, validation, and test shares.
+
+    Returns:
+        The three splits in that order.
+
+    Raises:
+        ConfigurationError: A share would receive no assets.
+    """
+    counts = _largest_remainder_counts(len(identifiers), ratios)
+    if any(count == 0 for count in counts):
+        raise ConfigurationError(
+            "The completed-trajectory partition needs at least one asset in "
+            f"train, validation, and test. Counts were {counts}."
+        )
+    train_end = counts[0]
+    validation_end = train_end + counts[1]
+    ordered = tuple(identifiers)
+    return {
+        SplitName.TRAIN: ordered[:train_end],
+        SplitName.VALIDATION: ordered[train_end:validation_end],
+        SplitName.TEST: ordered[validation_end:],
     }
 
 

@@ -1,11 +1,11 @@
 """Command-line interface.
 
 ``--help`` and ``--version`` work. ``validate`` checks the schema.
-``datasets list`` prints access and licence. Everything that would train,
-download, or write a report exits with code 2 until it is implemented.
+``datasets list`` prints access and licence. ``data fetch cmapss`` downloads
+the NASA C-MAPSS archive, checks its SHA-256, and writes git-ignored tables.
+``demo synthetic`` and ``demo cmapss`` write a JSON report.
 
-Exit codes: 0 success, 1 confirmed leakage once checks exist, 2 usage or
-configuration error.
+Exit codes: 0 success, 1 a check failed, 2 usage or configuration error.
 """
 
 from pathlib import Path
@@ -43,10 +43,16 @@ app = typer.Typer(
 )
 datasets_app = typer.Typer(
     name="datasets",
-    help="List reference datasets. Downloads are not implemented in this release.",
+    help="List reference datasets and fetch C-MAPSS FD001.",
+    no_args_is_help=True,
+)
+data_app = typer.Typer(
+    name="data",
+    help="Fetch public reference files. Raw archives are not stored in git.",
     no_args_is_help=True,
 )
 app.add_typer(datasets_app, name="datasets")
+app.add_typer(data_app, name="data")
 
 
 def _print_version(value: bool) -> None:
@@ -192,9 +198,9 @@ def demo_command(
 ) -> None:
     """Run a demo.
 
-    ``synthetic`` fits the constant and tree baselines. ``cmapss`` scores
-    FD001 only when the offline files named in the example config are already
-    on disk. Those files are not downloaded.
+    ``synthetic`` fits the constant and tree baselines on the bundled CSV.
+    ``cmapss`` does the same for FD001 after ``rulsafe data fetch cmapss``
+    has written the git-ignored tables. The demo does not download by itself.
     """
     normalized = fixture_name.strip().casefold()
     if normalized in _SCANIA_DEMO_NAMES:
@@ -206,12 +212,17 @@ def demo_command(
         console.print("Unknown demo. Choose cmapss or synthetic.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
     if normalized == "cmapss":
-        _exit_cmapss_without_cached_files()
+        _require_cmapss_tables()
     from rulsafe.api import run_pipeline
 
-    destination = output if output is not None else Path("rulsafe-runs") / "synthetic"
+    config_name = (
+        "cmapss_fd001_completed_trajectory.yaml"
+        if normalized == "cmapss"
+        else "synthetic_panel.yaml"
+    )
+    destination = output if output is not None else Path("rulsafe-runs") / normalized
     try:
-        config = load_config(Path("examples") / "synthetic_panel.yaml")
+        config = load_config(Path("examples") / config_name)
         result = run_pipeline(config, output_directory=destination)
     except ContractError as error:
         console.print(str(error))
@@ -237,7 +248,7 @@ def fetch_dataset_command(
         typer.Argument(help="Dataset name, for example cmapss_fd001."),
     ],
 ) -> None:
-    """Print access and licence, then download. Download is not implemented."""
+    """Print access and licence, then download C-MAPSS FD001 when it is v0.1."""
     try:
         card = dataset_card(dataset_name)
     except ConfigurationError as error:
@@ -254,17 +265,56 @@ def fetch_dataset_command(
         raise typer.Exit(code=EXIT_USAGE_ERROR) from error
 
 
-def _exit_cmapss_without_cached_files() -> None:
-    """Stop the C-MAPSS demo when the offline FD001 files are not on disk.
+@data_app.command("fetch")
+def data_fetch_command(
+    dataset_name: Annotated[
+        str,
+        typer.Argument(help="Dataset to fetch. Use cmapss."),
+    ],
+    output: Annotated[
+        Path,
+        typer.Option("--output", help="Directory for the converted FD001 tables."),
+    ] = Path("data/cmapss"),
+    from_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--from-file",
+            help="Local outer Prognostics zip or inner CMAPSSData.zip. Skips the download.",
+        ),
+    ] = None,
+) -> None:
+    """Download NASA C-MAPSS, verify both pinned SHA-256 values, and write FD001.
 
-    The package does not download C-MAPSS. Without those files the tree
-    metrics for this demo are not computed.
+    The raw zip is not written into the repository. Test engines are stored
+    as censored histories and are not given the RUL file as a label.
+    ``--from-file`` checks the same pins and does not use the network.
+    """
+    normalized = dataset_name.strip().casefold()
+    if normalized not in {"cmapss", "cmapss_fd001"}:
+        console.print("Unknown dataset. Use cmapss.")
+        raise typer.Exit(code=EXIT_USAGE_ERROR)
+    from rulsafe.datasets.cmapss_convert import CMAPSS_ARCHIVE_URL, fetch_cmapss_fd001
+
+    console.print(f"Source: {from_file if from_file is not None else CMAPSS_ARCHIVE_URL}")
+    console.print("Licence: not specified on the NASA catalog page.")
+    try:
+        written = fetch_cmapss_fd001(output, archive=from_file)
+    except ConfigurationError as error:
+        console.print(str(error))
+        raise typer.Exit(code=EXIT_USAGE_ERROR) from error
+    console.print(f"Wrote FD001 tables to {written}")
+    console.print(
+        "Completed training engines are partitioned in unit-number order. "
+        "NASA test engines are censored and excluded. RUL_FD001.txt was not used as a label."
+    )
+
+
+def _require_cmapss_tables() -> None:
+    """Stop the C-MAPSS demo when the converted FD001 files are not on disk.
 
     Raises:
-        typer.Exit: Always, with code 2, after naming the missing paths.
+        typer.Exit: When a required file is missing, with code 2.
     """
-    from rulsafe.api import load_config
-
     config = load_config(Path("examples") / "cmapss_fd001_completed_trajectory.yaml")
     paths = [config.connector.assets, config.connector.signals, config.connector.events]
     partitions = config.split.official_partitions
@@ -272,12 +322,17 @@ def _exit_cmapss_without_cached_files() -> None:
         paths.extend([partitions.train_ids, partitions.validation_ids, partitions.test_ids])
     missing = [path.as_posix() for path in paths if not path.is_file()]
     if not missing:
-        _exit_not_implemented("demo", "cmapss")
+        return
     console.print(
-        "C-MAPSS FD001 is not in this checkout and is not downloaded. "
+        "C-MAPSS FD001 tables are not on disk. They are not stored in git. "
+        "Run `rulsafe data fetch cmapss` from the repository root. "
+        "That downloads the NASA Prognostics outer zip "
+        "https://phm-datasets.s3.amazonaws.com/NASA/"
+        "6.+Turbofan+Engine+Degradation+Simulation+Data+Set.zip , "
+        "checks the outer and inner SHA-256 pins, and writes data/cmapss/. "
+        "Use --from-file for a local copy. "
         "The NASA catalog licence is not specified. "
-        "Place the offline files listed in examples/cmapss_fd001_completed_trajectory.yaml "
-        "and rerun. Without those files the histogram gradient boosting metrics "
+        "Without those files the histogram gradient boosting metrics "
         "for this demo are not computed."
     )
     console.print("Missing: " + ", ".join(missing))

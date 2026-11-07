@@ -1,15 +1,17 @@
 """Reference dataset catalogue.
 
-Listing a card does not download anything. Fetching is not implemented.
-SCANIA is listed so the refusal is explicit: it is a v0.2 dataset.
+Listing a card does not download anything. ``cmapss_fd001`` can be fetched
+from the documented NASA URL. SCANIA is listed so the refusal is explicit:
+it is a v0.2 dataset.
 """
 
 from pathlib import Path
 
 from rulsafe.datasets.cards import DatasetCard
 from rulsafe.datasets.cmapss import CMAPSS_FD001
+from rulsafe.datasets.cmapss_convert import fetch_cmapss_fd001
 from rulsafe.datasets.scania_component_x import SCANIA_COMPONENT_X
-from rulsafe.exceptions import ConfigurationError, not_implemented
+from rulsafe.exceptions import ConfigurationError
 
 _DATASETS: tuple[DatasetCard, ...] = (CMAPSS_FD001, SCANIA_COMPONENT_X)
 
@@ -55,8 +57,8 @@ def fetch_dataset(dataset_name: str, *, cache_directory: Path | None = None) -> 
         Path of the cached dataset.
 
     Raises:
-        ConfigurationError: The name is unknown, or the dataset is not in v0.1.
-        NotImplementedError: The v0.1 download itself is not implemented yet.
+        ConfigurationError: The name is unknown, the dataset is not in v0.1,
+            or the NASA archive cannot be verified.
     """
     card = dataset_card(dataset_name)
     if card.available_in != "0.1":
@@ -64,4 +66,5 @@ def fetch_dataset(dataset_name: str, *, cache_directory: Path | None = None) -> 
             f"{card.name} is not part of v0.1 (planned for v{card.available_in}). "
             "v0.1 does not download SCANIA Component X."
         )
-    raise not_implemented("fetch_dataset", card.name, cache_directory)
+    destination = cache_directory if cache_directory is not None else Path("data/cmapss")
+    return fetch_cmapss_fd001(destination)

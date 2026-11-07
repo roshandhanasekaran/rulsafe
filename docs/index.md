@@ -16,4 +16,6 @@ This package is not a safety-certified prognostic.
 
 ## Layout
 
+C-MAPSS FD001 is fetched, not bundled. The source URL, both SHA-256 pins, and the censored-test rule are in [C-MAPSS FD001](cmapss-fd001.md).
+
 The implementation lives under `src/rulsafe/`. Commands that are not built yet raise `NotImplementedError` and the command line exits with code 2. See the leakage note for statuses and the v0.1 check list. The supply-chain decision, still proposed, is [ADR-010](decisions/ADR-010-security-supply-chain.md).
