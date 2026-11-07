@@ -1,5 +1,6 @@
 """Guards for the hashed locks and the supply-chain decision."""
 
+import re
 from pathlib import Path
 
 _PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13")
@@ -69,13 +70,13 @@ def test_python_310_filelock_ignores_are_explicit(repository_root: Path) -> None
     assert all(identifier.startswith("CVE-") for identifier in identifiers)
 
 
-def test_security_decision_stays_proposed(repository_root: Path) -> None:
-    """Spike SP-010 is written down and has not been marked accepted."""
+def test_security_decision_is_proposed_or_accepted(repository_root: Path) -> None:
+    """Spike SP-010 is recorded. Accepting it later must not fail this test."""
     text = (repository_root / "docs" / "decisions" / "ADR-010-security-supply-chain.md").read_text(
         encoding="utf-8"
     )
     assert "SP-010" in text
-    assert "**Status:** Proposed" in text
+    assert re.search(r"\*\*Status:\*\* (?:Proposed|Accepted)\b", text)
     assert "pip-audit" in text
     assert "gitleaks" in text
     assert "CycloneDX" in text

@@ -29,18 +29,18 @@ Auditing a live virtualenv answers a different question (what this laptop happen
 
 ### 2. Hashed locks
 
-`pip-compile --generate-hashes` records a sha256 for every published artefact of each pinned version. CI installs with:
+`uv pip compile --python-version <version> --generate-hashes` records a sha256 for every published artefact of each pinned version. One file is produced per supported interpreter. CI installs the file that matches the job's Python:
 
 ```bash
 python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
 python -m pip install --no-deps --no-build-isolation -e .
 ```
 
-The lock filename matches the interpreter (`dev-3.10.lock`, `dev-3.11.lock`, `dev-3.12.lock`, `dev-3.13.lock`). Each file is produced with `uv pip compile --python-version <that version> --generate-hashes`.
+The lock filename matches the interpreter (`dev-3.10.lock`, `dev-3.11.lock`, `dev-3.12.lock`, `dev-3.13.lock`).
 
 `--require-hashes` rejects a missing or mismatched hash. `--only-binary=:all:` refuses an sdist, so a package cannot run `setup.py` as a substitute for the wheel whose hash is in the lock. `--no-build-isolation` builds the editable install with `hatchling` from that same lock. `hatchling` is listed in the `dev` extra so the lock contains the build backend and its dependencies.
 
-`pip` itself stays out of the lock. pip-compile treats it as unsafe to pin there. CI may upgrade `pip` before the hashed install. That one tool is the remaining unpinned installer.
+`pip` is pinned in these locks because `pip-api` depends on it, and the hashes cover that pin. CI still runs `python -m pip install --upgrade pip` first, only so an older installer can read `--require-hashes`. The lock then replaces that installer with the pinned `pip`.
 
 Hashes are collected from PyPI when the lock is generated. Review of the lock diff is the point where a substituted artefact has to be accepted. Later CI installs do not trust a new upload of the same version.
 
