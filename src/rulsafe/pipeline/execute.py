@@ -21,16 +21,48 @@ from rulsafe.config import (
     SplitProtocol,
 )
 from rulsafe.contract import LogicalTableRole
+from rulsafe.eval.bootstrap import (
+    BOOTSTRAP_LEVEL,
+    BOOTSTRAP_METHOD,
+    BOOTSTRAP_SAMPLES,
+    bootstrap_engine_intervals,
+)
+from rulsafe.eval.fd001 import (
+    FD001_PROTOCOL_NAME,
+    HELD_OUT_ROWS_PROTOCOL_NAME,
+    NASA_SCORE_DEFINITION,
+    protocol_description,
+    read_official_rul,
+)
 from rulsafe.eval.metrics import (
     METRIC_SUFFIXES,
     MetricsReport,
     SplitMetrics,
     choose_headline,
-    score_named_errors,
+    score_with_per_engine_nasa,
 )
 from rulsafe.exceptions import ConfigurationError, ContractError
 from rulsafe.io.files import load_table
 from rulsafe.leakage.checks import LeakageFinding
+from rulsafe.leakage.fail_on import (
+    ObservedWindow,
+    choice_split_finding,
+    confirmed_fail_on_ids,
+    delayed_record_finding,
+    entity_leakage_finding,
+    event_metadata_in_features_finding,
+    future_in_features_finding,
+    future_labels_finding,
+    interpolation_leak_finding,
+    official_hidden_label_finding,
+    post_event_features_finding,
+    random_split_finding,
+    replacement_episode_mix_finding,
+    scaler_leakage_finding,
+    silent_negative_censoring_finding,
+    target_in_features_finding,
+    unsupported_history_finding,
+)
 from rulsafe.leakage.report import with_documented_coverage
 from rulsafe.leakage.suite import LeakageSuiteResult
 from rulsafe.mapping import LogicalTables
@@ -41,13 +73,17 @@ from rulsafe.models.baselines import (
     fit_histogram_gradient_boosting,
 )
 from rulsafe.pipeline.episodes import Episode, build_episodes
-from rulsafe.pipeline.features import build_causal_features
 from rulsafe.pipeline.labels import (
     HistoryDisposition,
     HistorySupport,
-    assign_remaining_life,
     disposition_for_history,
 )
+from rulsafe.pipeline.prepare import (
+    ScoredRow,
+    prepare_official_last_observations,
+    prepare_supervised,
+)
+from rulsafe.pipeline.preprocess import FittedPreprocessor, fit_preprocessors
 from rulsafe.pipeline.split import (
     SplitName,
     assign_official_partitions,
@@ -55,6 +91,7 @@ from rulsafe.pipeline.split import (
     read_split_ids,
     split_size_risks,
 )
+from rulsafe.report.html import write_html_report
 from rulsafe.report.json import MetricComputationStatus, MetricValue
 
 
@@ -100,18 +137,40 @@ def execute_configured_run(
         excluded,
         output_directory,
     )
-    labeled = _labeled_rows(supervised, config)
+    prepared = prepare_supervised(supervised, config)
     split = _assign_split(config, tuple(episode.asset_id for episode in supervised))
     minimum = config.split.min_assets_per_split
     risks: list[dict[str, object]] = list(split_size_risks(split, minimum=minimum))
     rows_by_split = {
-        name: _completed_rows(labeled, identifiers) for name, identifiers in split.items()
+        name: _rows_for_assets(prepared.rows, identifiers) for name, identifiers in split.items()
     }
     training_rows = rows_by_split[SplitName.TRAIN]
-    validation_rows = rows_by_split[SplitName.VALIDATION]
     if not training_rows:
         raise ContractError("The training split has no completed-trajectory target.")
-    constant = fit_constant_baseline(training_targets=tuple(target for _, target in training_rows))
+    official_benchmark = config.evaluation.official_benchmark
+    official_truths: dict[str, float] = {}
+    official_rows: tuple[ScoredRow, ...] = ()
+    official_windows: tuple[ObservedWindow, ...] = ()
+    if official_benchmark is not None:
+        official_truths = read_official_rul(Path(official_benchmark.rul_path))
+        _require_censored_engines_in_rul(censored_ids, official_truths)
+        official_rows, official_windows = prepare_official_last_observations(
+            episodes, official_truths, config
+        )
+    preprocessor = fit_preprocessors(
+        tuple(row.features for row in training_rows),
+        asset_ids=tuple(row.asset_id for row in training_rows),
+        feature_names=prepared.feature_names,
+        clip_percentiles=config.preprocessing.clip_percentiles,
+        scaler=config.preprocessing.scaler,
+    )
+    rows_by_split = {name: _transform(rows, preprocessor) for name, rows in rows_by_split.items()}
+    training_rows = rows_by_split[SplitName.TRAIN]
+    validation_rows = rows_by_split[SplitName.VALIDATION]
+    official_rows = _transform(official_rows, preprocessor)
+    constant = fit_constant_baseline(
+        training_targets=tuple(row.remaining_life for row in training_rows)
+    )
     tree_requested = BaselineName.HIST_GRADIENT_BOOSTING in config.models.include
     tree: FittedBaseline | None = None
     if tree_requested:
@@ -120,19 +179,55 @@ def execute_configured_run(
             risks.append(_early_stopping_risk(len(split[SplitName.VALIDATION]), minimum))
     for risk in risks:
         warnings.warn(str(risk["message"]), UserWarning, stacklevel=2)
-    metrics = _metrics_report(
+    per_row_metrics = _metrics_report(
         rows_by_split, constant=constant, tree=tree, tree_requested=tree_requested
     )
-    recorded = [
-        finding
-        for finding in (
-            _unsupported_history_finding(censored_ids),
-            _future_feature_finding(episodes, config),
-            _random_split_finding(config),
-            _backend_split_finding(tree),
+    official = official_benchmark is not None
+    if official:
+        headline_rows = official_rows
+        headline_metrics = MetricsReport(
+            validation=per_row_metrics.validation,
+            test=_split_metrics(
+                official_rows,
+                constant=constant,
+                tree=tree,
+                tree_requested=tree_requested,
+            ),
         )
-        if finding is not None
-    ]
+        official_validation_rows = _last_rows(validation_rows)
+        official_validation = _split_metrics(
+            official_validation_rows,
+            constant=constant,
+            tree=tree,
+            tree_requested=tree_requested,
+        )
+    else:
+        headline_rows = rows_by_split[SplitName.TEST]
+        headline_metrics = per_row_metrics
+        official_validation_rows = ()
+        official_validation = None
+    intervals = _confidence_intervals(
+        headline_rows=headline_rows,
+        secondary_rows=rows_by_split[SplitName.TEST] if official else None,
+        constant=constant,
+        tree=tree,
+        seed=config.project.seed,
+    )
+    recorded = _audit_findings(
+        config=config,
+        episodes=episodes,
+        tables=tables,
+        split=split,
+        censored_ids=censored_ids,
+        prepared_windows=prepared.windows,
+        official_windows=official_windows,
+        label_checks=prepared.label_checks,
+        feature_names=prepared.feature_names,
+        fit_asset_ids=tuple(row.asset_id for row in training_rows),
+        labeled_asset_ids=tuple(row.asset_id for row in prepared.rows),
+        official_asset_ids=tuple(official_truths),
+        tree=tree,
+    )
     leakage = LeakageSuiteResult(findings=with_documented_coverage(recorded))
     document = _document(
         config,
@@ -141,13 +236,31 @@ def execute_configured_run(
         censored_ids,
         excluded,
         leakage,
-        metrics,
+        headline_metrics,
         constant,
         tree,
         risks,
+        official_asset_ids=set(official_truths),
+        per_row_metrics=per_row_metrics,
+        official_validation=official_validation,
+        official_validation_count=len(official_validation_rows),
+        official_test_count=len(official_rows),
+        intervals=intervals,
+        preprocessor=preprocessor,
+        feature_names=prepared.feature_names,
     )
+    confirmed = confirmed_fail_on_ids(leakage.findings, config.leakage.fail_on)
+    if confirmed:
+        document["status"] = "FAILED"
+        document["confirmed_fail_on"] = list(confirmed)
     _write_report(document, output_directory)
-    return leakage, metrics, document
+    if confirmed:
+        listed = ", ".join(confirmed)
+        raise ContractError(
+            f"A fail_on leakage check was CONFIRMED: {listed}. "
+            f"The report was written to {output_directory / 'report.json'}."
+        )
+    return leakage, headline_metrics, document
 
 
 def _resolve_auto_features(
@@ -368,46 +481,6 @@ def _rejection_record(episode: Episode, disposition: HistoryDisposition) -> dict
     }
 
 
-def _labeled_rows(episodes: Sequence[Episode], config: RunConfig) -> list[dict[str, object]]:
-    """Build one supervised or reported row per causal prediction time.
-
-    Args:
-        episodes: Classified asset histories.
-        config: Feature and label settings.
-
-    Returns:
-        Rows with asset id, remaining life or None, and causal features.
-    """
-    feature_columns = config.signals.feature_columns
-    if not isinstance(feature_columns, list):
-        raise ConfigurationError("feature_columns: auto is not resolved in this run yet.")
-    rows: list[dict[str, object]] = []
-    for episode in episodes:
-        for prediction_time in _prediction_times(episode):
-            remaining = assign_remaining_life(
-                support=episode.support,
-                policy=config.labeling.censored_policy,
-                prediction_time=prediction_time,
-                episode_end=episode.end_time,
-            )
-            features = build_causal_features(
-                rows=episode.rows,
-                prediction_time=prediction_time,
-                gap_policy=config.signals.gap_policy,
-                maximum_gap=config.signals.max_gap,
-                feature_columns=feature_columns,
-            )
-            rows.append(
-                {
-                    "asset_id": episode.asset_id,
-                    "prediction_time": prediction_time,
-                    "remaining_life": remaining,
-                    "features": features,
-                }
-            )
-    return rows
-
-
 def _prediction_times(episode: Episode) -> tuple[float, ...]:
     """Return signal times strictly before the episode end.
 
@@ -442,8 +515,8 @@ def _before_end(event_time: float, end_time: float | None) -> bool:
 
 
 def _fit_tree(
-    training_rows: Sequence[tuple[Mapping[str, float | None], float]],
-    validation_rows: Sequence[tuple[Mapping[str, float | None], float]],
+    training_rows: Sequence[ScoredRow],
+    validation_rows: Sequence[ScoredRow],
     *,
     random_state: int,
 ) -> FittedBaseline:
@@ -457,11 +530,11 @@ def _fit_tree(
     Returns:
         The fitted tree. Test rows are not accepted here.
     """
-    validation_features = tuple(features for features, _ in validation_rows)
-    validation_targets = tuple(target for _, target in validation_rows)
+    validation_features = tuple(row.features for row in validation_rows)
+    validation_targets = tuple(row.remaining_life for row in validation_rows)
     return fit_histogram_gradient_boosting(
-        training_features=tuple(features for features, _ in training_rows),
-        training_targets=tuple(target for _, target in training_rows),
+        training_features=tuple(row.features for row in training_rows),
+        training_targets=tuple(row.remaining_life for row in training_rows),
         validation_features=validation_features or None,
         validation_targets=validation_targets or None,
         random_state=random_state,
@@ -493,55 +566,83 @@ def _early_stopping_risk(validation_asset_count: int, minimum: int) -> dict[str,
     }
 
 
-def _completed_rows(
-    labeled: Sequence[Mapping[str, object]],
-    asset_ids: Sequence[str],
-) -> list[tuple[dict[str, float | None], float]]:
+def _rows_for_assets(rows: Sequence[ScoredRow], asset_ids: Sequence[str]) -> tuple[ScoredRow, ...]:
     """Keep scored rows whose asset is in one split.
 
     Args:
-        labeled: Prediction rows.
+        rows: Prediction rows.
         asset_ids: Assets in the split.
 
     Returns:
-        Feature mapping and remaining life for each scored row.
+        The rows that belong to those assets.
     """
     allowed = set(asset_ids)
-    chosen: list[tuple[dict[str, float | None], float]] = []
-    for row in labeled:
-        if row["asset_id"] not in allowed or row["remaining_life"] is None:
-            continue
-        chosen.append((_feature_mapping(row["features"]), _number(row["remaining_life"])))
-    return chosen
+    return tuple(row for row in rows if row.asset_id in allowed)
 
 
-def _feature_mapping(value: object) -> dict[str, float | None]:
-    """Read a causal feature mapping from a labeled row.
+def _transform(
+    rows: Sequence[ScoredRow], preprocessor: FittedPreprocessor
+) -> tuple[ScoredRow, ...]:
+    """Apply the training-fitted clip and scaler.
 
     Args:
-        value: The ``features`` cell.
+        rows: Rows whose features are still on the original scale.
+        preprocessor: Clip and scaler fit on the training split.
 
     Returns:
-        Feature name to a float or None.
+        Rows with transformed features and the same targets.
+    """
+    return tuple(
+        ScoredRow(
+            asset_id=row.asset_id,
+            prediction_time=row.prediction_time,
+            features=preprocessor.transform(row.features),
+            remaining_life=row.remaining_life,
+        )
+        for row in rows
+    )
+
+
+def _last_rows(rows: Sequence[ScoredRow]) -> tuple[ScoredRow, ...]:
+    """Keep the latest prediction time of each asset.
+
+    Args:
+        rows: Scored rows.
+
+    Returns:
+        One row per asset, in asset-id order.
+    """
+    best: dict[str, ScoredRow] = {}
+    for row in rows:
+        current = best.get(row.asset_id)
+        if current is None or row.prediction_time >= current.prediction_time:
+            best[row.asset_id] = row
+    return tuple(best[asset_id] for asset_id in sorted(best))
+
+
+def _require_censored_engines_in_rul(
+    censored_ids: tuple[str, ...],
+    truths: Mapping[str, float],
+) -> None:
+    """Require every censored engine to have an official truth.
+
+    Args:
+        censored_ids: Censored asset ids.
+        truths: Official remaining life by asset id.
 
     Raises:
-        ConfigurationError: The cell is not a feature mapping.
+        ConfigurationError: A censored engine is missing from the RUL file.
     """
-    if not isinstance(value, Mapping):
-        raise ConfigurationError("A labeled row is missing its feature mapping.")
-    features: dict[str, float | None] = {}
-    for key, cell in value.items():
-        if not isinstance(key, str):
-            raise ConfigurationError("Feature names must be strings.")
-        if cell is None:
-            features[key] = None
-            continue
-        features[key] = _number(cell)
-    return features
+    missing = [asset_id for asset_id in censored_ids if asset_id not in truths]
+    if missing:
+        listed = ", ".join(missing)
+        raise ConfigurationError(
+            f"Censored engines are missing from the official RUL file: {listed}."
+        )
 
 
 def _metrics_report(
-    rows_by_split: Mapping[SplitName, Sequence[tuple[Mapping[str, float | None], float]]],
+    rows_by_split: Mapping[SplitName, Sequence[ScoredRow]],
     *,
     constant: FittedBaseline,
     tree: FittedBaseline | None,
@@ -575,13 +676,16 @@ def _metrics_report(
 
 
 def _split_metrics(
-    rows: Sequence[tuple[Mapping[str, float | None], float]],
+    rows: Sequence[ScoredRow],
     *,
     constant: FittedBaseline,
     tree: FittedBaseline | None,
     tree_requested: bool,
 ) -> SplitMetrics:
     """Score one split.
+
+    Root-mean-square error and mean absolute error use every row. The NASA
+    score uses the last scored time of each engine.
 
     Args:
         rows: Scored rows in this split.
@@ -603,13 +707,12 @@ def _split_metrics(
         )
         values.update(_absent_metrics("hist_gradient_boosting", tree_status))
         return SplitMetrics(values=values)
-    actual = tuple(target for _, target in rows)
-    features = tuple(feature for feature, _ in rows)
-    values.update(_scored_metrics("constant", actual, constant.predict(features)))
+    features = tuple(row.features for row in rows)
+    values.update(_scored_metrics("constant", rows, constant.predict(features)))
     if tree is None:
         values.update(_absent_metrics("hist_gradient_boosting", MetricComputationStatus.DISABLED))
     else:
-        values.update(_scored_metrics("hist_gradient_boosting", actual, tree.predict(features)))
+        values.update(_scored_metrics("hist_gradient_boosting", rows, tree.predict(features)))
     return SplitMetrics(values=values)
 
 
@@ -633,116 +736,217 @@ def _absent_metrics(prefix: str, status: MetricComputationStatus) -> dict[str, M
 
 def _scored_metrics(
     prefix: str,
-    actual: Sequence[float],
+    rows: Sequence[ScoredRow],
     predicted: Sequence[float],
 ) -> dict[str, MetricValue]:
     """Prefix the three computed scores for one model.
 
     Args:
         prefix: ``constant`` or ``hist_gradient_boosting``.
-        actual: Observed remaining life.
+        rows: Scored rows. The NASA score keeps one pair per engine.
         predicted: Predictions in the same order.
 
     Returns:
         Computed root-mean-square error, mean absolute error, and NASA score.
     """
-    named = score_named_errors(actual=actual, predicted=predicted)
+    named = score_with_per_engine_nasa(
+        asset_ids=tuple(row.asset_id for row in rows),
+        times=tuple(row.prediction_time for row in rows),
+        actual=tuple(row.remaining_life for row in rows),
+        predicted=predicted,
+    )
     return {f"{prefix}_{suffix}": named[suffix] for suffix in METRIC_SUFFIXES}
 
 
-def _unsupported_history_finding(censored_ids: tuple[str, ...]) -> LeakageFinding:
-    """Report censored assets instead of dropping them.
+def _confidence_intervals(
+    *,
+    headline_rows: Sequence[ScoredRow],
+    secondary_rows: Sequence[ScoredRow] | None,
+    constant: FittedBaseline,
+    tree: FittedBaseline | None,
+    seed: int,
+) -> dict[str, object]:
+    """Bootstrap test RMSE and MAE over engines.
 
     Args:
-        censored_ids: Assets that were not scored.
+        headline_rows: Rows behind the headline test.
+        secondary_rows: Per-row secondary test, or None when it is the headline.
+        constant: Training-only constant model.
+        tree: Training-only tree, or None.
+        seed: Project seed.
 
     Returns:
-        A pass when every such asset is named, which this function always does.
+        Method, sample count, level, seed, and the two test blocks.
     """
-    if censored_ids:
-        listed = ", ".join(censored_ids)
-        evidence = (
-            "Censored or unsupported assets were excluded from training "
-            f"and listed in the report: {listed}."
+    return {
+        "method": BOOTSTRAP_METHOD,
+        "samples": BOOTSTRAP_SAMPLES,
+        "level": BOOTSTRAP_LEVEL,
+        "seed": seed,
+        "headline_test": _model_intervals(headline_rows, constant, tree, seed),
+        "secondary_test": (
+            None
+            if secondary_rows is None
+            else _model_intervals(secondary_rows, constant, tree, seed)
+        ),
+    }
+
+
+def _model_intervals(
+    rows: Sequence[ScoredRow],
+    constant: FittedBaseline,
+    tree: FittedBaseline | None,
+    seed: int,
+) -> dict[str, object]:
+    """Bootstrap one test view for each fitted model.
+
+    Args:
+        rows: Scored rows. Empty views are ``NOT_COMPUTED``.
+        constant: Training-only constant model.
+        tree: Training-only tree, or None.
+        seed: Project seed.
+
+    Returns:
+        Status and one interval block per model.
+    """
+    if not rows:
+        return {"status": MetricComputationStatus.NOT_COMPUTED.value, "models": {}}
+    features = tuple(row.features for row in rows)
+    actual = tuple(row.remaining_life for row in rows)
+    assets = tuple(row.asset_id for row in rows)
+    models: dict[str, object] = {
+        "constant": bootstrap_engine_intervals(
+            asset_ids=assets,
+            actual=actual,
+            predicted=constant.predict(features),
+            seed=seed,
         )
-    else:
-        evidence = "No censored or unsupported assets were present."
-    return LeakageFinding(
-        check_id=LeakageCheckId.UNSUPPORTED_HISTORY,
-        status=LeakageStatus.PASS,
-        evidence=evidence,
-        remedy="Keep reject or report. Do not drop these histories.",
-    )
+    }
+    if tree is not None:
+        models["hist_gradient_boosting"] = bootstrap_engine_intervals(
+            asset_ids=assets,
+            actual=actual,
+            predicted=tree.predict(features),
+            seed=seed,
+        )
+    return {"status": MetricComputationStatus.COMPUTED.value, "models": models}
 
 
-def _future_feature_finding(episodes: Sequence[Episode], config: RunConfig) -> LeakageFinding:
-    """Confirm features at time t ignore rows that were not yet knowable.
-
-    Args:
-        episodes: Histories whose rows may include later records.
-        config: Feature settings.
-
-    Returns:
-        Pass when dropping future rows leaves the features unchanged.
-    """
-    feature_columns = config.signals.feature_columns
-    if not isinstance(feature_columns, list):
-        raise ConfigurationError("feature_columns: auto is not resolved in this run yet.")
-    for episode in episodes:
-        for prediction_time in _prediction_times(episode):
-            full = build_causal_features(
-                rows=episode.rows,
-                prediction_time=prediction_time,
-                gap_policy=config.signals.gap_policy,
-                maximum_gap=config.signals.max_gap,
-                feature_columns=feature_columns,
-            )
-            past_rows = tuple(
-                row
-                for row in episode.rows
-                if _number(row["event_time"]) <= prediction_time
-                and _number(row["available_at"]) <= prediction_time
-            )
-            past = build_causal_features(
-                rows=past_rows,
-                prediction_time=prediction_time,
-                gap_policy=config.signals.gap_policy,
-                maximum_gap=config.signals.max_gap,
-                feature_columns=feature_columns,
-            )
-            if full != past:
-                return LeakageFinding(
-                    check_id=LeakageCheckId.FUTURE_IN_FEATURES,
-                    status=LeakageStatus.CONFIRMED,
-                    evidence=(
-                        f"Features for {episode.asset_id} at {prediction_time} "
-                        "changed when later rows were removed."
-                    ),
-                    remedy="Use only rows with event_time and available_at at or before t.",
-                )
-    return LeakageFinding(
-        check_id=LeakageCheckId.FUTURE_IN_FEATURES,
-        status=LeakageStatus.PASS,
-        evidence="Features at each prediction time ignore rows that were not yet knowable.",
-        remedy="Keep the causal filter.",
-    )
-
-
-def _random_split_finding(config: RunConfig) -> LeakageFinding:
-    """Record that this run did not use a random split.
+def _audit_findings(
+    *,
+    config: RunConfig,
+    episodes: Sequence[Episode],
+    tables: LogicalTables,
+    split: Mapping[SplitName, tuple[str, ...]],
+    censored_ids: tuple[str, ...],
+    prepared_windows: Sequence[ObservedWindow],
+    official_windows: Sequence[ObservedWindow],
+    label_checks: Sequence[tuple[float, float, float]],
+    feature_names: Sequence[str],
+    fit_asset_ids: Sequence[str],
+    labeled_asset_ids: Sequence[str],
+    official_asset_ids: Sequence[str],
+    tree: FittedBaseline | None,
+) -> list[LeakageFinding]:
+    """Run the fail-on checks and the backend-split warning.
 
     Args:
         config: Validated configuration.
+        episodes: Classified histories.
+        tables: Loaded tables, used for replacement events.
+        split: Asset ids by split.
+        censored_ids: Censored or unsupported assets.
+        prepared_windows: Windows for supervised rows.
+        official_windows: Windows for the official last observation.
+        label_checks: Supervised label triples.
+        feature_names: Names passed to the model.
+        fit_asset_ids: Assets used to fit the preprocessor.
+        labeled_asset_ids: Assets that received a supervised label.
+        official_asset_ids: Engines named in the official RUL file.
+        tree: Fitted tree, or None.
 
     Returns:
-        A pass. ``random`` and ``global_time`` are rejected before a run starts.
+        Findings. A missing check stays for documented coverage.
     """
-    return LeakageFinding(
-        check_id=LeakageCheckId.RANDOM_SPLIT,
-        status=LeakageStatus.PASS,
-        evidence=f"Split protocol is {config.split.protocol.value}.",
-        remedy="Keep a named protocol. Do not shuffle panel rows.",
-    )
+    windows = tuple(prepared_windows) + tuple(official_windows)
+    split_ids = tuple(asset_id for identifiers in split.values() for asset_id in identifiers)
+    stopping = None if tree is None else tree.early_stopping_split
+    findings = [
+        random_split_finding(config.split.protocol.value),
+        future_labels_finding(label_checks, config.target.rul_cap),
+        future_in_features_finding(windows),
+        post_event_features_finding(windows),
+        delayed_record_finding(
+            available_at_supplied=config.signals.available_at_column is not None,
+            windows=windows,
+        ),
+        interpolation_leak_finding(config.signals.gap_policy.value),
+        entity_leakage_finding(windows),
+        scaler_leakage_finding(fit_asset_ids, split[SplitName.TRAIN]),
+        target_in_features_finding(feature_names),
+        event_metadata_in_features_finding(feature_names, config.events.forbidden_as_features),
+        silent_negative_censoring_finding(censored_ids, split_ids, labeled_asset_ids),
+        unsupported_history_finding(censored_ids, censored_ids),
+        replacement_episode_mix_finding(
+            _episode_spans(episodes), _replacement_events(tables, config)
+        ),
+        choice_split_finding(stopping, "validation"),
+        official_hidden_label_finding(
+            train_asset_ids=split[SplitName.TRAIN],
+            official_asset_ids=official_asset_ids,
+            training_used_official_file=False,
+        ),
+    ]
+    backend = _backend_split_finding(tree)
+    if backend is not None:
+        findings.append(backend)
+    return findings
+
+
+def _episode_spans(episodes: Sequence[Episode]) -> dict[str, tuple[float, float]]:
+    """Return the first and last signal time of each episode.
+
+    Args:
+        episodes: Classified histories.
+
+    Returns:
+        Asset id to ``(start, end)``. An empty history is omitted.
+    """
+    spans: dict[str, tuple[float, float]] = {}
+    for episode in episodes:
+        if not episode.rows:
+            continue
+        times = [_number(row["event_time"]) for row in episode.rows]
+        spans[episode.asset_id] = (min(times), max(times))
+    return spans
+
+
+def _replacement_events(
+    tables: LogicalTables,
+    config: RunConfig,
+) -> tuple[tuple[str, float], ...]:
+    """Read replacement events as asset id and time.
+
+    Args:
+        tables: Loaded tables.
+        config: Event column names and replacement types.
+
+    Returns:
+        One pair per replacement row. Other event types are ignored.
+    """
+    types = {item.casefold() for item in config.contract.replacement_types}
+    if not types:
+        return ()
+    found: list[tuple[str, float]] = []
+    for row in tables.events.rows:
+        if row.get(config.events.type_column, "").casefold() not in types:
+            continue
+        asset_id = row.get(config.events.id_column, "").strip()
+        raw_time = row.get(config.events.event_time_column, "")
+        if not asset_id or raw_time == "":
+            continue
+        found.append((asset_id, _number(raw_time)))
+    return tuple(found)
 
 
 def _backend_split_finding(tree: FittedBaseline | None) -> LeakageFinding | None:
@@ -806,28 +1010,62 @@ _DISCLAIMER = (
 )
 VALIDATION_METRIC_ROLE = "used for early stopping/selection"
 TEST_METRIC_ROLE = "headline evaluation"
-_HEADLINE_CRITERION = (
-    "The headline evaluation is the test split of the model selected on "
-    "validation root_mean_square_error. Validation metrics are "
-    f"{VALIDATION_METRIC_ROLE} and are optimistic relative to the test. "
-    "The NASA score is reported and is not a gate."
-)
+SECONDARY_METRIC_ROLE = "secondary"
+_SELECTION_VIEW = "per-row remaining life on held-out training engines"
+_OFFICIAL_TEST_VIEW = "last observation of each official test engine against the RUL file"
+_ROW_TEST_VIEW = "per-row remaining life on the held-out test engines"
+_OFFICIAL_VALIDATION_ROLE = "official-protocol validation, not used for early stopping"
+
+
+def _headline_criterion(official: bool, rul_cap: int | None) -> str:
+    """Describe which test is the headline and how the NASA score is summed.
+
+    Args:
+        official: True when the FD001 last-observation benchmark is the headline.
+        rul_cap: Piecewise cap, or None.
+
+    Returns:
+        The criterion stored on the report.
+    """
+    cap_text = "none" if rul_cap is None else str(rul_cap)
+    nasa = (
+        "The NASA score is the Saxena 2008 sum of one term per engine, "
+        "not a sum over rows. The NASA score is reported and is not a gate."
+    )
+    if official:
+        return (
+            "The headline evaluation is the test split: the last observation of each "
+            "official test engine against the RUL file. Validation metrics are "
+            f"{VALIDATION_METRIC_ROLE}. Those validation metrics are per-row scores "
+            "on held-out training engines and do not use the official test labels. "
+            f"Piecewise RUL cap: {cap_text}. {nasa} "
+            "The per-row scores on held-out completed training engines are secondary."
+        )
+    return (
+        "The headline evaluation is the test split of the model selected on "
+        "validation root_mean_square_error. Validation metrics are "
+        f"{VALIDATION_METRIC_ROLE} and are optimistic relative to the test. "
+        f"Piecewise RUL cap: {cap_text}. {nasa}"
+    )
 
 
 def _write_report(document: dict[str, object], output_directory: Path) -> Path:
-    """Write ``report.json`` and record its path on the document.
+    """Write ``report.json`` and ``report.html``.
 
     Args:
         document: JSON-ready report body.
-        output_directory: Directory for the file.
+        output_directory: Directory for the files.
 
     Returns:
-        The report path.
+        The JSON report path.
     """
     output_directory.mkdir(parents=True, exist_ok=True)
     report_path = output_directory / "report.json"
+    html_path = output_directory / "report.html"
     document["report_json"] = str(report_path)
+    document["report_html"] = str(html_path)
     report_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    write_html_report(document, html_path)
     return report_path
 
 
@@ -842,6 +1080,15 @@ def _document(
     constant: FittedBaseline,
     tree: FittedBaseline | None,
     risks: Sequence[Mapping[str, object]],
+    *,
+    official_asset_ids: set[str],
+    per_row_metrics: MetricsReport,
+    official_validation: SplitMetrics | None,
+    official_validation_count: int,
+    official_test_count: int,
+    intervals: Mapping[str, object],
+    preprocessor: FittedPreprocessor,
+    feature_names: Sequence[str],
 ) -> dict[str, object]:
     """Build the JSON report body for a run that finished scoring.
 
@@ -849,13 +1096,21 @@ def _document(
         config: Validated configuration.
         episodes: Classified histories.
         split: Asset ids by split. Censored and unsupported ids are absent.
-        censored_ids: Assets that were not scored.
+        censored_ids: Assets that were not scored as supervised rows.
         excluded: Histories left out of every split, with their disposition.
         leakage: Audit rows, including documented coverage.
-        metrics: Validation and test metrics.
+        metrics: Selection metrics and the headline test.
         constant: Training-only constant model.
         tree: Training-only tree, or None when it was not requested.
         risks: Warnings for empty or undersized splits.
+        official_asset_ids: Engines scored against the official RUL file.
+        per_row_metrics: Per-row scores on held-out training engines.
+        official_validation: Last-cycle scores of held-out training engines.
+        official_validation_count: Engines in that official validation view.
+        official_test_count: Official test engines.
+        intervals: Bootstrap intervals for the test scores.
+        preprocessor: Train-only clip and scaler.
+        feature_names: Last, mean, and slope names passed to the model.
 
     Returns:
         A JSON-ready mapping with status ``COMPLETED``.
@@ -869,6 +1124,9 @@ def _document(
     tree_status = (
         MetricComputationStatus.COMPUTED if tree is not None else MetricComputationStatus.DISABLED
     )
+    official = config.evaluation.official_benchmark is not None
+    rul_cap = config.target.rul_cap
+    test_view = _OFFICIAL_TEST_VIEW if official else _ROW_TEST_VIEW
     return {
         "project": config.project.name,
         "status": "COMPLETED",
@@ -883,10 +1141,7 @@ def _document(
                 "support": episode.support.value,
                 "disposition": disposition.value,
                 "used_for_training": False,
-                "detail": (
-                    "Reported and excluded from every split. "
-                    "A censored or unsupported history is not a training row."
-                ),
+                "detail": _history_detail(episode.asset_id, official_asset_ids),
             }
             for episode, disposition in excluded
         ],
@@ -905,6 +1160,37 @@ def _document(
             None if tree is None else tree.early_stopping_split
         ),
         "gap_policy": config.signals.gap_policy.value,
+        "rul_cap": rul_cap,
+        "feature_names": list(feature_names),
+        "preprocessing": {
+            "clip_percentiles": list(config.preprocessing.clip_percentiles),
+            "scaler": preprocessor.scaler,
+            "fit_split": preprocessor.membership.split_name,
+            "fit_row_count": preprocessor.membership.fitted_row_count,
+            "membership_hash": preprocessor.membership.membership_hash,
+        },
+        "windows": {
+            "lookback": config.windows.lookback,
+            "stride": config.windows.stride,
+            "discard_straddle_split": config.windows.discard_straddle_split,
+            "statistics": ["last", "mean", "slope"],
+            "past_only": "event_time and available_at at or before the prediction time",
+        },
+        "evaluation_protocol": {
+            "name": FD001_PROTOCOL_NAME if official else HELD_OUT_ROWS_PROTOCOL_NAME,
+            "rul_cap": rul_cap,
+            "nasa_score": NASA_SCORE_DEFINITION,
+            "description": protocol_description(official=official, rul_cap=rul_cap),
+        },
+        "official_benchmark": _official_benchmark_block(
+            config,
+            test_metrics=metrics.test,
+            validation_metrics=official_validation,
+            validation_count=official_validation_count,
+            test_count=official_test_count,
+        ),
+        "secondary_evaluation": (_secondary_block(per_row_metrics) if official else None),
+        "confidence_intervals": dict(intervals),
         "leakage": [
             {
                 "check_id": finding.check_id.value,
@@ -921,27 +1207,140 @@ def _document(
             "test": TEST_METRIC_ROLE,
         },
         "metrics": {
-            "validation": _metric_block(metrics.validation, VALIDATION_METRIC_ROLE),
-            "test": _metric_block(metrics.test, TEST_METRIC_ROLE),
+            "validation": _metric_block(
+                metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
+            ),
+            "test": _metric_block(metrics.test, TEST_METRIC_ROLE, test_view),
         },
         "headline_model": headline.value,
-        "headline_criterion": _HEADLINE_CRITERION,
+        "headline_criterion": _headline_criterion(official, rul_cap),
         "headline_metrics": _headline_metrics(headline, metrics.test),
         "tree_model_status": tree_status.value,
     }
 
 
-def _metric_block(metrics: SplitMetrics, role: str) -> dict[str, object]:
-    """Label one split's scores with the role they play in the report.
+def _history_detail(asset_id: str, official_asset_ids: set[str]) -> str:
+    """Describe a history that was left out of the supervised splits.
 
     Args:
-        metrics: Scores for validation or test.
-        role: ``used for early stopping/selection`` or ``headline evaluation``.
+        asset_id: Equipment identifier.
+        official_asset_ids: Engines scored against the official RUL file.
 
     Returns:
-        The role and the metric objects.
+        The disposition detail.
     """
-    block: dict[str, object] = {"role": role}
+    detail = (
+        "Reported and excluded from every split. "
+        "A censored or unsupported history is not a training row."
+    )
+    if asset_id in official_asset_ids:
+        detail += " It is scored only in the official last-observation benchmark."
+    return detail
+
+
+def _official_benchmark_block(
+    config: RunConfig,
+    *,
+    test_metrics: SplitMetrics,
+    validation_metrics: SplitMetrics | None,
+    validation_count: int,
+    test_count: int,
+) -> dict[str, object] | None:
+    """Describe the FD001 last-observation benchmark.
+
+    Args:
+        config: Validated configuration.
+        test_metrics: Headline scores on the official test engines.
+        validation_metrics: Last-cycle scores of held-out training engines.
+        validation_count: Engines in that validation view.
+        test_count: Official test engines.
+
+    Returns:
+        The benchmark block, or None when this run has no official file.
+    """
+    benchmark = config.evaluation.official_benchmark
+    if benchmark is None or validation_metrics is None:
+        return None
+    return {
+        "protocol": FD001_PROTOCOL_NAME,
+        "role": TEST_METRIC_ROLE,
+        "rul_cap": config.target.rul_cap,
+        "rul_path": str(benchmark.rul_path),
+        "truth": (
+            "RUL file value at the last observed cycle of each official test engine. "
+            "The file is not a training label. When rul_cap is set, the scored truth "
+            "is min(file value, rul_cap)."
+        ),
+        "validation_source": (
+            "Last pre-failure cycle of each held-out training engine. "
+            "Truth is the capped cycles remaining until failure."
+        ),
+        "early_stopping": (
+            "Every causal row of the held-out training engines. "
+            "The official test labels are not used for early stopping or model selection."
+        ),
+        "validation": {
+            "engine_count": validation_count,
+            "source": "last pre-failure cycle of held-out training engines",
+            "role": _OFFICIAL_VALIDATION_ROLE,
+            "metrics": _metric_block(
+                validation_metrics,
+                _OFFICIAL_VALIDATION_ROLE,
+                "last pre-failure cycle of each held-out training engine",
+            ),
+        },
+        "test": {
+            "engine_count": test_count,
+            "source": "last observed cycle of each official test engine",
+            "role": TEST_METRIC_ROLE,
+            "metrics": _metric_block(test_metrics, TEST_METRIC_ROLE, _OFFICIAL_TEST_VIEW),
+        },
+    }
+
+
+def _secondary_block(metrics: MetricsReport) -> dict[str, object]:
+    """Describe the per-row scores on held-out completed training engines.
+
+    Args:
+        metrics: Per-row validation and test scores.
+
+    Returns:
+        The secondary view. It is not the official FD001 benchmark.
+    """
+    return {
+        "role": SECONDARY_METRIC_ROLE,
+        "name": "held_out_training_engine_rows",
+        "description": (
+            "Per-row remaining life on held-out completed training engines. "
+            "Not the official FD001 benchmark. The validation block is the same "
+            "per-row scores used for early stopping and selection. The test block "
+            "is the secondary evaluation. Its NASA score is one Saxena term per engine."
+        ),
+        "metrics": {
+            "validation": _metric_block(
+                metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
+            ),
+            "test": _metric_block(
+                metrics.test,
+                SECONDARY_METRIC_ROLE,
+                "per-row remaining life on held-out completed training engines",
+            ),
+        },
+    }
+
+
+def _metric_block(metrics: SplitMetrics, role: str, view: str) -> dict[str, object]:
+    """Label one split's scores with the role and the view they come from.
+
+    Args:
+        metrics: Scores for one view.
+        role: How this block is used.
+        view: Which rows were scored.
+
+    Returns:
+        The role, the view, and the metric objects.
+    """
+    block: dict[str, object] = {"role": role, "view": view}
     block.update({name: metric.to_dict() for name, metric in metrics.values.items()})
     return block
 

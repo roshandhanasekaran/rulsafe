@@ -89,12 +89,14 @@ def mean_absolute_error(actual: Sequence[float], predicted: Sequence[float]) -> 
 
 
 def nasa_asymmetric_score(actual: Sequence[float], predicted: Sequence[float]) -> float:
-    """Return the PHM 2008 asymmetric score.
+    """Return the PHM 2008 asymmetric score for the pairs it is given.
 
     ``d`` is estimated remaining life minus true remaining life. A negative
     ``d`` (early) contributes ``exp(-d / 13) - 1``. A non-negative ``d``
-    (late) contributes ``exp(d / 10) - 1``. The result is the sum. It is not
-    a gate and it does not choose the headline model.
+    (late) contributes ``exp(d / 10) - 1``. The result is the sum of those
+    terms. The Saxena 2008 engine score passes one pair per engine, not one
+    pair per row. The score is not a gate and it does not choose the headline
+    model.
 
     Args:
         actual: Observed remaining life, in row order.
@@ -114,6 +116,71 @@ def nasa_asymmetric_score(actual: Sequence[float], predicted: Sequence[float]) -
         else:
             total += math.exp(difference / _NASA_LATE_DIVISOR) - 1.0
     return total
+
+
+def last_observation_pairs(
+    asset_ids: Sequence[str],
+    times: Sequence[float],
+    actual: Sequence[float],
+    predicted: Sequence[float],
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Keep the last scored time of each engine.
+
+    Args:
+        asset_ids: Engine id of each row.
+        times: Prediction time of each row.
+        actual: Observed remaining life.
+        predicted: Predicted remaining life.
+
+    Returns:
+        Actual and predicted values, one pair per engine, in asset-id order.
+        When two rows share a time, the later row is kept.
+
+    Raises:
+        ContractError: The sequences differ in length or are empty.
+    """
+    if not (len(asset_ids) == len(times) == len(actual) == len(predicted)):
+        raise ContractError("Per-engine pairs need sequences of the same length.")
+    if not asset_ids:
+        raise ContractError("Per-engine scoring needs at least one row.")
+    best: dict[str, tuple[float, int, float, float]] = {}
+    for index, (asset_id, time, truth, guess) in enumerate(
+        zip(asset_ids, times, actual, predicted, strict=True)
+    ):
+        current = best.get(asset_id)
+        if current is None or time > current[0] or (time == current[0] and index >= current[1]):
+            best[asset_id] = (time, index, float(truth), float(guess))
+    ordered = [best[asset_id] for asset_id in sorted(best)]
+    return tuple(item[2] for item in ordered), tuple(item[3] for item in ordered)
+
+
+def score_with_per_engine_nasa(
+    *,
+    asset_ids: Sequence[str],
+    times: Sequence[float],
+    actual: Sequence[float],
+    predicted: Sequence[float],
+) -> dict[str, MetricValue]:
+    """Score rows with RMSE and MAE, and the NASA score once per engine.
+
+    Root-mean-square error and mean absolute error use every row. The NASA
+    score uses the last scored time of each engine and then sums those terms.
+
+    Args:
+        asset_ids: Engine id of each row.
+        times: Prediction time of each row.
+        actual: Observed remaining life.
+        predicted: Predicted remaining life.
+
+    Returns:
+        Three computed metrics.
+    """
+    unit_actual, unit_predicted = last_observation_pairs(asset_ids, times, actual, predicted)
+    return {
+        "root_mean_square_error": MetricValue.computed(root_mean_square_error(actual, predicted)),
+        "mean_absolute_error": MetricValue.computed(mean_absolute_error(actual, predicted)),
+        "nasa_score": MetricValue.computed(nasa_asymmetric_score(unit_actual, unit_predicted)),
+    }
 
 
 def score_named_errors(

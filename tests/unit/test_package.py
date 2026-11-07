@@ -86,6 +86,11 @@ def test_run_pipeline_keeps_the_censored_engine(load_example, tmp_path) -> None:
     _assert_headline_follows_validation_rmse(document)
     assert result.report_paths.json_path is not None
     assert result.report_paths.json_path.is_file()
+    assert result.report_paths.html_path is not None
+    assert result.report_paths.html_path.is_file()
+    html_copy = result.save_html(tmp_path / "copy.html")
+    assert "Research software" in html_copy.read_text(encoding="utf-8")
+    assert "Research software" in result._repr_html_()
     copy_path = result.save_json(tmp_path / "copy.json")
     assert copy_path.read_text(encoding="utf-8") == result.report_paths.json_path.read_text(
         encoding="utf-8"

@@ -114,6 +114,9 @@ def test_demo_synthetic_writes_the_censored_asset(tmp_path: Path) -> None:
     report = (tmp_path / "report.json").read_text(encoding="utf-8")
     assert "unit-censored" in report
     assert "COMPUTED" in report
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
+    assert "Research software" in html
+    assert "report.html" in result.stdout
     assert "headline evaluation" in report
     assert "used for early stopping/selection" in report
     assert "hist_gradient_boosting_root_mean_square_error" in report

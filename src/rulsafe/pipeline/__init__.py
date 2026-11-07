@@ -1,9 +1,8 @@
 """Steps that turn logical tables into train, validation, and test rows.
 
-The functions in this package are the v0.1 pipeline seams. Most of them
-raise ``NotImplementedError`` until a later change fills them in.
 ``disposition_for_history`` is implemented: ``reject`` stops the run and
 ``report`` leaves the history out of every split. Neither drops it quietly.
+Causal lookback windows and the train-only clip and scaler are implemented.
 """
 
 from rulsafe.pipeline.episodes import build_episodes as build_episodes

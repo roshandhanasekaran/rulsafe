@@ -11,7 +11,7 @@ Every finding has a check id, a status, evidence, and a remedy.
 
 If `available_at` was not supplied, delayed-record leakage is `NOT_CHECKED`, not `PASS`. An empty finding list is also `NOT_CHECKED`. `with_documented_coverage` adds a `NOT_CHECKED` row for every known check that has no finding, so the report shows what it did not cover.
 
-A confirmed `fail_on` check will abort training after the report is written and exit with code 1. That behavior is specified and not implemented yet.
+A confirmed `fail_on` check aborts the run after `report.json` and `report.html` are written. The report status is `FAILED`, and the command exits with code 1.
 
 ## v0.1 checks
 
@@ -29,7 +29,7 @@ When a metric has no number, the report JSON does not omit it and does not store
 {"value": null, "status": "NOT_COMPUTED"}
 ```
 
-A metric the configuration turns off uses `"status": "DISABLED"` and the same null value. A metric with a number uses `"status": "COMPUTED"`. An empty split uses `"status": "NOT_COMPUTED"` and the report `risks` state that reason. Root-mean-square error and mean absolute error are the primary scores. The NASA asymmetric score is secondary and is not a `fail_on` check. Histogram gradient boosting is fit on the training split only. Early stopping and model selection use the validation split and do not draw a random internal split of the training rows. The report labels those validation metrics `used for early stopping/selection`. The headline evaluation is the test split. `censored_policy: reject` writes each offending asset id with its signal, event, and prediction row counts before it stops.
+A metric the configuration turns off uses `"status": "DISABLED"` and the same null value. A metric with a number uses `"status": "COMPUTED"`. An empty split uses `"status": "NOT_COMPUTED"` and the report `risks` state that reason. Root-mean-square error and mean absolute error are the primary scores. The NASA asymmetric score is one Saxena 2008 term per engine, summed across engines, and is not a `fail_on` check. Test RMSE and MAE include a percentile bootstrap over engines. Histogram gradient boosting is fit on the training split only. Early stopping and model selection use the validation split and do not draw a random internal split of the training rows. The report labels those validation metrics `used for early stopping/selection`. The headline evaluation is the test split. `censored_policy: reject` writes each offending asset id with its signal, event, and prediction row counts before it stops.
 
 ## Gap policy
 

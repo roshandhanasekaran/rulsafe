@@ -75,9 +75,13 @@ class RunResult:
             The path that was written.
 
         Raises:
-            NotImplementedError: HTML reports are not implemented yet.
+            NotImplementedError: This result was not produced by a run.
         """
-        raise not_implemented("RunResult.save_html", path)
+        if self._document is None:
+            raise not_implemented("RunResult.save_html", path)
+        from rulsafe.report.html import write_html_report
+
+        return write_html_report(self._document, Path(path))
 
     def save_json(self, path: str | Path) -> Path:
         """Write the machine-readable report.
@@ -111,15 +115,19 @@ class RunResult:
         return dict(self._document)
 
     def _repr_html_(self) -> str:
-        """Return a compact notebook summary.
+        """Return the self-contained HTML report.
 
         Returns:
             HTML for a notebook display.
 
         Raises:
-            NotImplementedError: Notebook display is not implemented yet.
+            NotImplementedError: This result was not produced by a run.
         """
-        raise not_implemented("RunResult._repr_html_")
+        if self._document is None:
+            raise not_implemented("RunResult._repr_html_")
+        from rulsafe.report.html import render_html
+
+        return render_html(self._document)
 
 
 def load_config(path: str | Path) -> RunConfig:
@@ -167,6 +175,9 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
     Parquet. The constant baseline and the histogram gradient boosting
     baseline are fit on training rows only. Early stopping and model selection
     use the validation split. The headline evaluation is the test split.
+    When an official FD001 benchmark is configured, that test split is the
+    last observation of each official test engine. The run writes
+    ``report.json`` and ``report.html``.
     ``censored_policy`` ``report`` keeps censored histories in the JSON
     report and out of every split. ``reject`` writes a partial report with
     status ``FAILED`` and no metrics, then raises. C-MAPSS FD001 is fetched
@@ -178,7 +189,7 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
             report directory is used when this is None.
 
     Returns:
-        The run result, including the JSON report path.
+        The run result, including the JSON and HTML report paths.
 
     Raises:
         ConfigurationError: The files or protocol are outside this slice.
@@ -193,9 +204,13 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
     )
     leakage, metrics, document = execute_configured_run(config, destination)
     report_path = destination / "report.json"
+    html_path = destination / "report.html"
     return RunResult(
         leakage=leakage,
         metrics=metrics,
-        report_paths=ReportPaths(html_path=None, json_path=report_path),
+        report_paths=ReportPaths(
+            html_path=html_path if html_path.is_file() else None,
+            json_path=report_path,
+        ),
         document=document,
     )

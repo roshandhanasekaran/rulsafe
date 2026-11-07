@@ -27,27 +27,36 @@ A separate Zenodo record, doi:10.5281/zenodo.15346912, states CC BY 4.0 for that
 
 Cite Saxena, A. and Goebel, K. (2008). Turbofan Engine Degradation Simulation Data Set. NASA Ames Prognostics Data Repository. Also Saxena, Goebel, Simon and Eklund, Damage Propagation Modeling for Aircraft Engine Run-to-Failure Simulation, PHM 2008.
 
-## What v0.1 keeps
+## What the FD001 demo scores
 
 FD001 has 100 training engines and 100 test engines. Training engines run until failure. Test engines stop before failure.
 
-v0.1 uses the completed training engines only. They are named `train-001` through `train-100` and split in unit-number order, without shuffling:
+Completed training engines are named `train-001` through `train-100` and split in unit-number order, without shuffling:
 
-- train: the first 70
-- validation: the next 15
-- test: the last 15
+- train: the first 70, used to fit the model, the clip bounds, and the scaler
+- validation: the next 15, used for early stopping and model selection
+- test: the last 15, the secondary per-row view
 
-Those id files are `data/cmapss/fd001_train_ids.txt`, `fd001_validation_ids.txt`, and `fd001_test_ids.txt`. The example config reads them as `official_partitions`.
+Those id files are `data/cmapss/fd001_train_ids.txt`, `fd001_validation_ids.txt`, and `fd001_test_ids.txt`.
 
-The NASA test engines are written as censored histories (`test-001` through `test-100`) with event type `censored`. `censored_policy: report` lists them and leaves them out of every split. They are not training rows. `RUL_FD001.txt` is checked so the archive is recognisable, and its values are not copied into labels or features. Reconstructing those hidden remaining-life values is out of scope for this demo.
+The headline evaluation is the official benchmark. It scores the last observed cycle of each NASA test engine (`test-001` through `test-100`) against `RUL_FD001.txt`. The converted file is `data/cmapss/fd001_official_rul.txt`, one `asset_id value` line per engine. That file is test truth. It is not a training label, and those engines are not in the training split.
+
+Validation for the same protocol is the last pre-failure cycle of the 15 held-out training engines. Early stopping still uses every causal row of those engines and does not read the RUL file. The per-row scores on the 15 held-out training engines in `fd001_test_ids.txt` are reported as `secondary_evaluation`. They are not the official benchmark.
+
+`target.rul_cap` is 125 in the example. Every supervised target and every official truth is `min(remaining life, 125)` before fit and score. The report states the cap. A generic run leaves `target.rul_cap` null.
+
+The NASA score is the Saxena 2008 sum of one term per engine. It is not summed over rows, and it is not a gate. Test RMSE and MAE also have a percentile bootstrap over engines.
+
+The NASA test engines are still written as censored histories so they stay out of training. `censored_policy: report` lists them.
 
 The converted tables are:
 
 - `data/cmapss/fd001_assets.parquet`
 - `data/cmapss/fd001_signals.parquet`
 - `data/cmapss/fd001_events.parquet`
+- `data/cmapss/fd001_official_rul.txt`
 
-Signal features are the three operational settings and the 21 sensors. The unit id and the cycle are not features.
+Signal features are the three operational settings and the 21 sensors, plus a causal mean and slope over `windows.lookback` past rows. Clip percentiles and the standard scaler are fit on the training rows only. The unit id and the cycle are not features.
 
 ```bash
 rulsafe data fetch cmapss

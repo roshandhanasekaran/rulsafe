@@ -14,11 +14,11 @@ Python 3.11 or newer:
 pip install -e ".[dev]"
 ```
 
-`[demo]` adds Jinja2 for the later HTML report. Matplotlib is intentionally not pinned yet. Matplotlib 3.11.2 requires Python 3.11 or newer, which matches this package, and it is still not a v0.1 dependency.
+`report.html` is written with the standard library and does not need an extra. `[demo]` still installs Jinja2. Matplotlib is intentionally not pinned yet. Matplotlib 3.11.2 requires Python 3.11 or newer, which matches this package, and it is still not a v0.1 dependency.
 
 ## What works in this foundation
 
-This release is the repository foundation. The schema, the history-disposition rule, dataset cards, and the command-line skeleton are real. Training, windowing, downloads, and report writing are specified and not implemented yet.
+The schema, the history-disposition rule, dataset cards, and the completed-trajectory pipeline are real. `rulsafe demo synthetic` and `rulsafe demo cmapss` fit the constant and histogram gradient boosting baselines, audit the `fail_on` checks, and write `report.json` and `report.html`.
 
 ```bash
 rulsafe --help
@@ -31,13 +31,13 @@ rulsafe datasets list
 
 `rulsafe validate` checks the YAML contract only. It does not open the data files.
 
-Run the synthetic completed-trajectory demo from the repository root. It writes `report.json` for a deterministic noisy fleet: 20 completed units with different lifetimes, and temperature, pressure, vibration, and flow that drift and carry fixed noise. `unit-censored` leaves the study. The demo uses `censored_policy: report`, so that unit is named in the report and is not in train, validation, or test. Every split has at least three assets. The constant baseline and the histogram gradient boosting baseline are fit on the training split only. Validation metrics are used for early stopping and model selection, and the report labels them that way. The headline evaluation is the test split. The NASA score is reported and is not a gate. The tiny panel in `tests/fixtures/synthetic_panel` and `examples/synthetic_panel.yaml` stays the unit smoke fixture: its one-asset validation and test splits are warnings in `risks`, and those scores stay `COMPUTED`. An empty split is `NOT_COMPUTED`, and that reason is in `risks`.
+Run the synthetic completed-trajectory demo from the repository root. It writes `report.json` for a deterministic noisy fleet: 20 completed units with different lifetimes, and temperature, pressure, vibration, and flow that drift and carry fixed noise. `unit-censored` leaves the study. The demo uses `censored_policy: report`, so that unit is named in the report and is not in train, validation, or test. Every split has at least three assets. The constant baseline and the histogram gradient boosting baseline are fit on the training split only. Validation metrics are used for early stopping and model selection, and the report labels them that way. The headline evaluation is the test split. The NASA score is one Saxena term per engine, and it is not a gate. `target.rul_cap` is null. The run writes `report.json` and `report.html`. The tiny panel in `tests/fixtures/synthetic_panel` and `examples/synthetic_panel.yaml` stays the unit smoke fixture: its one-asset validation and test splits are warnings in `risks`, and those scores stay `COMPUTED`. An empty split is `NOT_COMPUTED`, and that reason is in `risks`.
 
 ```bash
 rulsafe demo synthetic --output ./rulsafe-runs/synthetic
 ```
 
-`rulsafe data fetch cmapss` downloads the NASA Prognostics outer zip, checks the outer and inner SHA-256 pins, and writes git-ignored FD001 tables. The NASA catalog licence is not specified. See [C-MAPSS FD001](docs/cmapss-fd001.md). Only the 100 completed training engines are scored. The 100 NASA test engines are censored and excluded, and `RUL_FD001.txt` is not used as a label. `rulsafe demo cmapss` reads those tables. If they are absent the command exits with code 2 and the tree metrics for that demo are not computed. These commands still exit with code 2:
+`rulsafe data fetch cmapss` downloads the NASA Prognostics outer zip, checks the outer and inner SHA-256 pins, and writes git-ignored FD001 tables. The NASA catalog licence is not specified. See [C-MAPSS FD001](docs/cmapss-fd001.md). The headline score is the last observation of each official test engine against `RUL_FD001.txt`. That file is not a training label. Validation comes from held-out training engines. The per-row scores on those engines are a secondary view. The example sets `target.rul_cap` to 125. `rulsafe demo cmapss` reads those tables and writes `report.json` and `report.html`. If the tables are absent the command exits with code 2 and the tree metrics for that demo are not computed. These commands still exit with code 2:
 
 ```bash
 rulsafe demo cmapss --output ./rulsafe-runs/demo
@@ -73,9 +73,9 @@ rulsafe datasets fetch cmapss_fd001
 rulsafe datasets fetch scania_component_x
 ```
 
-`fetch` prints the card and then stops. The download is not implemented. The SCANIA fetch stops because that dataset is v0.2.
+`rulsafe datasets fetch` prints the card and then stops. The C-MAPSS download is `rulsafe data fetch cmapss`. The SCANIA fetch stops because that dataset is v0.2.
 
-Exit codes once the pipeline exists: `0` finished with no confirmed `fail_on` finding, `1` confirmed leakage, `2` usage or configuration error. In this foundation, unfinished commands use `2`.
+Exit codes: `0` finished with no confirmed `fail_on` finding, `1` confirmed leakage, `2` usage or configuration error. Commands that are still stubs (`check`, `train`, `init`, `inspect`, `report`) use `2`.
 
 ### Python
 
@@ -87,8 +87,10 @@ config = load_config("examples/cmapss_fd001_completed_trajectory.yaml")
 config.project.name
 config.labeling.censored_policy.value  # "reject" or "report"
 
-# The pipeline is specified and not implemented in this foundation.
+# The C-MAPSS config needs the tables from `rulsafe data fetch cmapss`.
 # result = run_pipeline(config, output_directory=Path("rulsafe-runs/demo"))
+# That writes report.json and report.html. The headline test is the last
+# observation of each official test engine against RUL_FD001.txt.
 
 MetricValue.disabled().to_json()
 # {"value": null, "status": "DISABLED"}
@@ -100,7 +102,7 @@ MetricValue.computed(12.5).to_json()
 # {"value": 12.5, "status": "COMPUTED"}
 ```
 
-`run_pipeline` fits the group-holdout CSV slice. Call `load_config` or `RunConfig.from_mapping` to validate a mapping without YAML. A disabled metric was not requested. A not-computed metric is in scope but has no number, and an empty split records that reason in `risks`. Neither is stored as `0`. `censored_policy: reject` writes `report.json` with `"status": "FAILED"`, the contract violations, and `"metrics": null`, then raises `ContractError`.
+`run_pipeline` fits the completed-trajectory pipeline and writes both report files. Call `load_config` or `RunConfig.from_mapping` to validate a mapping without YAML. A disabled metric was not requested. A not-computed metric is in scope but has no number, and an empty split records that reason in `risks`. Neither is stored as `0`. `censored_policy: reject` writes `report.json` and `report.html` with `"status": "FAILED"`, the contract violations, and `"metrics": null`, then raises `ContractError`.
 
 ## v0.1 contract
 
@@ -115,15 +117,17 @@ MetricValue.computed(12.5).to_json()
 
 ## Roadmap
 
-**Still required before v0.1 can be called complete**
+**In this release**
 
-- Causal windows, labels, and the three splitters, with synthetic fixtures under `tests/fixtures/synthetic_panel/`
-- Train-only preprocessing and the two baselines
-- Leakage checks with a planted failure and a clean pass for each `fail_on` id
-- Last-observation C-MAPSS scoring, including the NASA score from the dataset readme
-- HTML, JSON, and a Rich terminal summary, with documented coverage
-- `rulsafe demo cmapss` writing `report.html` and `report.json`
+- Causal windows, labels, and the train / validation / test splitters, with synthetic fixtures under `tests/fixtures/synthetic_panel/`
+- Train-only clip percentiles and scaling, and the constant and histogram gradient boosting baselines
+- A planted `CONFIRMED` case and a clean `PASS` for each `fail_on` check
+- Official FD001 last-observation scoring against `RUL_FD001.txt`, with the NASA score summed once per engine
+- `report.json` and `report.html`, with documented leakage coverage
+- `rulsafe demo cmapss` after `rulsafe data fetch cmapss`
 - Invariance tests: future rows do not change earlier features; final-test labels do not move the fitted model or the validation choice
+
+A Rich terminal summary is still a stub.
 
 **v0.2 and later, only if the completed-trajectory toolkit is in use**
 
@@ -139,7 +143,7 @@ Out of scope until someone asks: a user interface, warehouse connectors, Chronos
 
 [CeRULEo](https://github.com/lucianolorenti/ceruleo) (Lorenti and Susto, *Journal of Open Source Software* 8(88), 5294, 2023, [doi:10.21105/joss.05294](https://doi.org/10.21105/joss.05294)) is a toolkit of remaining-useful-life methods. [RTX Providence](https://github.com/rtx-corp-open-source/providence) (Fox, Zimmerman, Daly, O'Keeffe and Verleyen, IEEE Aerospace Conference 2022, [doi:10.1109/AERO53065.2022.9843469](https://doi.org/10.1109/AERO53065.2022.9843469)) is a neural time-to-event research framework. The GitHub API reports Providence's licence as Other / `NOASSERTION`; this project does not assign it an SPDX identifier.
 
-Neither package is this audit. v0.1's leftover is causal windows, a named train / validation / test protocol, training-only preprocessing, and an explicit disposition for histories it cannot score.
+Neither package is this audit. This release keeps a named train / validation / test protocol, training-only preprocessing, and an explicit disposition for histories it cannot score.
 
 ## Development
 

@@ -59,6 +59,9 @@ labeling:
   unit: cycles
   censored_policy: report
 
+target:
+  rul_cap: null
+
 windows:
   lookback: 16
   stride: 1

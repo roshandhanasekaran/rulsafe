@@ -6,6 +6,7 @@ from io import StringIO
 from pathlib import Path
 
 from rulsafe import load_config, run_pipeline
+from rulsafe.config import DEFAULT_FAIL_ON_CHECKS
 from rulsafe.datasets.synthetic_fleet import (
     CENSORED_ASSET_ID,
     COMPLETED_ASSET_COUNT,
@@ -83,6 +84,27 @@ def test_demo_fleet_has_three_assets_in_every_split(repository_root: Path, tmp_p
     assert CENSORED_ASSET_ID not in splits["train"] + splits["validation"] + splits["test"]
     assert document["risks"] == []
     assert document["headline_split"] == "test"
+    assert document["rul_cap"] is None
+    assert document["official_benchmark"] is None
+    assert document["secondary_evaluation"] is None
+    assert (tmp_path / "report.html").is_file()
+    assert "temperature_mean" in document["feature_names"]
+    assert "temperature_slope" in document["feature_names"]
+    preprocessing = document["preprocessing"]
+    assert isinstance(preprocessing, dict)
+    assert preprocessing["scaler"] == "standard"
+    assert preprocessing["fit_split"] == "train"
+    findings = {
+        item["check_id"]: item["status"] for item in document["leakage"] if isinstance(item, dict)
+    }
+    for check in DEFAULT_FAIL_ON_CHECKS:
+        assert findings[check.value] == "PASS"
+    assert findings["high_association_with_label"] == "NOT_CHECKED"
+    intervals = document["confidence_intervals"]
+    assert isinstance(intervals, dict)
+    headline = intervals["headline_test"]
+    assert isinstance(headline, dict)
+    assert headline["status"] == "COMPUTED"
     assert completed_asset_id(1) in splits["train"] + splits["validation"] + splits["test"]
 
 

@@ -1,8 +1,11 @@
-# C-MAPSS FD001 completed-trajectory demo.
+# C-MAPSS FD001 demo.
 # rulsafe data fetch cmapss writes these files from the NASA archive.
-# Only the 100 training engines, which run to failure, are scored.
-# The NASA test engines stop before failure. They are censored, listed, and
-# excluded from train, validation, and test. Their RUL file is not a label.
+# The headline score is the last observation of each official test engine
+# against fd001_official_rul.txt. That file is not a training label.
+# Validation for the protocol is the last pre-failure cycle of the held-out
+# training engines. Early stopping uses every causal row of those engines.
+# The per-row scores on the held-out training engines are the secondary view.
+# target.rul_cap 125 is the piecewise cap from the C-MAPSS example.
 # The NASA catalog does not state a licence. A separate Zenodo record uses
 # CC BY 4.0 for that record only. Do not merge those statements.
 
@@ -10,8 +13,10 @@ project:
   name: cmapss-fd001-completed-trajectory
   seed: 7
   notes: >
-    Completed training trajectories only. NASA test trajectories are censored
-    and excluded. Licence is not specified on the NASA catalog page.
+    Official FD001 last-observation benchmark against RUL_FD001.txt, with a
+    piecewise RUL cap of 125. Held-out training engines supply validation.
+    The per-row training holdout is secondary. The RUL file is not a training
+    label. Licence is not specified on the NASA catalog page.
     Zenodo doi:10.5281/zenodo.15346912 states CC BY 4.0 for that record only.
 
 connector:
@@ -57,6 +62,9 @@ labeling:
   horizon: null
   unit: cycles
   censored_policy: report
+
+target:
+  rul_cap: 125
 
 windows:
   lookback: 16
@@ -111,6 +119,9 @@ evaluation:
     - prediction_error
     - error_by_unit
     - history_dispositions
+  official_benchmark:
+    protocol: fd001_last_observation
+    rul_path: data/cmapss/fd001_official_rul.txt
 
 report:
   formats:

@@ -2,7 +2,7 @@
 
 ## 0.0.1 — 2026-11-07
 
-Foundation release. The package installs, the v0.1 schema validates, and the command-line skeleton answers `--help` and `--version`. The training pipeline is not implemented.
+Foundation release. The package installs, the v0.1 schema validates, and the completed-trajectory pipeline writes `report.json` and `report.html`.
 
 ### Added
 
@@ -35,7 +35,9 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - `rulsafe demo synthetic` uses a deterministic noisy fleet with varied lifetimes and four drifting sensors. Every split has at least three assets. The tiny panel remains the unit smoke fixture.
 - Validation metrics are labeled `used for early stopping/selection`. The headline evaluation is the test split of the model selected on validation root-mean-square error.
 - A rejected history's partial report names the offending asset and its signal, event, and prediction row counts.
+- The FD001 headline score is the last observation of each official test engine against `RUL_FD001.txt`. Held-out training engines supply the protocol validation. Per-row scores on those engines stay as a labelled secondary view. `target.rul_cap` defaults to none and is 125 in the C-MAPSS example. The NASA score sums one Saxena 2008 term per engine.
+- Clip percentiles and the standard scaler are fit on the training split. `windows.lookback` adds a causal mean and slope beside the last value. Test RMSE and MAE include a percentile bootstrap over engines. `report.html` is written beside `report.json`. A confirmed `fail_on` check writes that report and then stops.
 
 ### Not in this release
 
-- HTML reports. FD002–FD004 are not converted. The raw C-MAPSS archive is not committed.
+- FD002–FD004 are not converted. The raw C-MAPSS archive is not committed.

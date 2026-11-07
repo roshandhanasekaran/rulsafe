@@ -26,7 +26,7 @@ from rulsafe.exceptions import (
     not_implemented,
 )
 
-console = Console()
+console = Console(highlight=False, soft_wrap=True)
 _DEFAULT_INIT_PATH = Path("run.yaml")
 _V01_DEMOS = frozenset({"cmapss", "synthetic"})
 _SCANIA_DEMO_NAMES = frozenset({"scania", "scania_component_x"})
@@ -231,6 +231,8 @@ def demo_command(
         console.print(str(error))
         raise typer.Exit(code=EXIT_USAGE_ERROR) from error
     console.print(f"Wrote {result.report_paths.json_path}")
+    if result.report_paths.html_path is not None:
+        console.print(f"Wrote {result.report_paths.html_path}")
     console.print(f"Leakage status: {result.leakage.worst_status.value}")
 
 
@@ -285,8 +287,9 @@ def data_fetch_command(
 ) -> None:
     """Download NASA C-MAPSS, verify both pinned SHA-256 values, and write FD001.
 
-    The raw zip is not written into the repository. Test engines are stored
-    as censored histories and are not given the RUL file as a label.
+    The raw zip is not written into the repository. Test engines stay out of
+    training. ``RUL_FD001.txt`` is written as official last-observation truth
+    and is not a training label.
     ``--from-file`` checks the same pins and does not use the network.
     """
     normalized = dataset_name.strip().casefold()
@@ -305,7 +308,8 @@ def data_fetch_command(
     console.print(f"Wrote FD001 tables to {written}")
     console.print(
         "Completed training engines are partitioned in unit-number order. "
-        "NASA test engines are censored and excluded. RUL_FD001.txt was not used as a label."
+        "NASA test engines stay out of training. "
+        "RUL_FD001.txt is official last-observation truth and is not a training label."
     )
 
 
@@ -320,6 +324,9 @@ def _require_cmapss_tables() -> None:
     partitions = config.split.official_partitions
     if partitions is not None:
         paths.extend([partitions.train_ids, partitions.validation_ids, partitions.test_ids])
+    benchmark = config.evaluation.official_benchmark
+    if benchmark is not None:
+        paths.append(benchmark.rul_path)
     missing = [path.as_posix() for path in paths if not path.is_file()]
     if not missing:
         return

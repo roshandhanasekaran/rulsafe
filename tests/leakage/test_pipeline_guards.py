@@ -17,7 +17,8 @@ from rulsafe.models.baselines import (
     fit_constant_baseline,
     fit_histogram_gradient_boosting,
 )
-from rulsafe.pipeline.features import build_causal_features
+from rulsafe.pipeline.features import build_causal_features, features_from_windows
+from rulsafe.pipeline.windows import build_windows
 
 
 class _Fits:
@@ -97,6 +98,7 @@ def test_appending_future_rows_does_not_change_earlier_features(
             feature_columns=SENSORS,
         )
         assert before == after
+        assert _lookback(rows, times) == _lookback((*rows, future), times)
 
     original = tmp_path / "original"
     extended = tmp_path / "extended"
@@ -277,6 +279,22 @@ def _prediction_row_count(repository_root: Path, asset_ids: list[str]) -> int:
         if cycle < failures[asset_id]:
             seen.add((asset_id, cycle))
     return len(seen)
+
+
+def _lookback(
+    rows: Sequence[Mapping[str, object]], times: Sequence[int]
+) -> list[dict[str, float | None]]:
+    """Build causal lookback features at the given times."""
+    windows = build_windows(
+        rows=rows,
+        lookback=16,
+        stride=1,
+        discard_straddle_split=True,
+        prediction_times=times,
+        gap_policy=GapPolicy.NONE,
+        maximum_gap=None,
+    )
+    return features_from_windows(windows, SENSORS)
 
 
 def _feature_row(row: dict[str, str]) -> dict[str, object]:

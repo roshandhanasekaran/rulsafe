@@ -6,11 +6,10 @@ inner ``CMAPSSData.zip`` and writes Parquet tables plus split id files under
 ``data/cmapss/``. That directory is git-ignored. ``--from-file`` accepts either
 zip when the network is not used.
 
-FD001 training engines run until failure. Those are the only histories v0.1
-scores. FD001 test engines stop before failure. They are written as censored
-histories and left out of every split. ``RUL_FD001.txt`` is required to be
-present in the archive so the file set is recognisable, and its values are
-not copied into labels.
+FD001 training engines run until failure and are split for fit and for the
+secondary per-row view. FD001 test engines stop before failure. They stay
+out of training. ``RUL_FD001.txt`` is written beside the tables as official
+last-observation truth and is not a training label.
 """
 
 import hashlib
@@ -249,7 +248,7 @@ def convert_fd001_archive(archive: Path, destination: Path) -> dict[str, int]:
     if len(rul_values) != len({row["unit_id"] for row in test_rows}):
         raise ConfigurationError(
             "RUL_FD001.txt does not have one value per FD001 test engine. "
-            "Those values are not used as labels."
+            "Those values are official test truth, not training labels."
         )
     completed_ids = _ordered_unit_ids(train_rows)
     censored_ids = _ordered_unit_ids(test_rows)
@@ -265,6 +264,7 @@ def convert_fd001_archive(archive: Path, destination: Path) -> dict[str, int]:
     _write_ids(destination / "fd001_train_ids.txt", splits[SplitName.TRAIN])
     _write_ids(destination / "fd001_validation_ids.txt", splits[SplitName.VALIDATION])
     _write_ids(destination / "fd001_test_ids.txt", splits[SplitName.TEST])
+    _write_official_rul(destination / "fd001_official_rul.txt", censored_ids, rul_values)
     return {
         "completed_engines": len(completed_ids),
         "censored_engines": len(censored_ids),
@@ -377,15 +377,28 @@ def _parse_trajectory(text: str, prefix: str) -> list[dict[str, str]]:
 
 
 def _parse_rul(text: str) -> tuple[str, ...]:
-    """Read the RUL vector only to check that the member is present and paired.
+    """Read one official remaining-life token per test engine.
 
     Args:
         text: ``RUL_FD001.txt`` body.
 
     Returns:
-        One token per non-blank line. These values are not written as labels.
+        One token per non-blank line, in file order. These values are test
+        truth for the last observation. They are not training labels.
     """
     return tuple(line.split()[0] for line in text.splitlines() if line.split())
+
+
+def _write_official_rul(path: Path, asset_ids: Sequence[str], values: Sequence[str]) -> None:
+    """Write asset id and official remaining life, one pair per line.
+
+    Args:
+        path: Destination text file.
+        asset_ids: Official test engine ids, in unit order.
+        values: ``RUL_FD001.txt`` tokens in the same order.
+    """
+    lines = [f"{asset_id} {value}" for asset_id, value in zip(asset_ids, values, strict=True)]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _ordered_unit_ids(rows: Sequence[Mapping[str, str]]) -> tuple[str, ...]:

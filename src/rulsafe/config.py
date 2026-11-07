@@ -9,7 +9,7 @@ import math
 from collections.abc import Mapping, Sequence
 from enum import Enum, StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import (
     BaseModel,
@@ -1081,6 +1081,49 @@ class ModelsConfig(StrictConfigModel):
         return include
 
 
+class OfficialBenchmarkConfig(StrictConfigModel):
+    """Official last-observation benchmark.
+
+    The RUL file is test truth. It is not a training label.
+
+    Attributes:
+        protocol: ``fd001_last_observation``.
+        rul_path: Converted file of asset id and official remaining life.
+    """
+
+    protocol: Literal["fd001_last_observation"]
+    rul_path: Path
+
+
+class TargetConfig(StrictConfigModel):
+    """Target transform applied before fit and score.
+
+    Attributes:
+        rul_cap: Piecewise cap ``min(remaining life, cap)``. None leaves the
+            target unchanged. The C-MAPSS example uses 125.
+    """
+
+    rul_cap: int | None = None
+
+    @field_validator("rul_cap")
+    @classmethod
+    def check_rul_cap(cls, rul_cap: int | None) -> int | None:
+        """Reject a cap that is not a positive integer.
+
+        Args:
+            rul_cap: Requested cap, or None.
+
+        Returns:
+            The same cap when it is usable.
+
+        Raises:
+            ValueError: The cap is zero, negative, or a boolean.
+        """
+        if isinstance(rul_cap, bool) or (rul_cap is not None and rul_cap <= 0):
+            raise ValueError("target.rul_cap must be a positive integer or null.")
+        return rul_cap
+
+
 class EvaluationConfig(StrictConfigModel):
     """Where the headline model is chosen, and which plots are requested.
 
@@ -1093,6 +1136,7 @@ class EvaluationConfig(StrictConfigModel):
         threshold_split: Must be validation. v0.1 uses this as the choice split.
         report_split_order: Train, validation, and test, each once.
         plots: Plot names to include once plotting exists.
+        official_benchmark: FD001 last-observation settings, or None.
     """
 
     threshold_split: Annotated[str, BeforeValidator(_parse_threshold_split)] = "validation"
@@ -1110,6 +1154,7 @@ class EvaluationConfig(StrictConfigModel):
             PlotName.HISTORY_DISPOSITIONS,
         ]
     )
+    official_benchmark: OfficialBenchmarkConfig | None = None
 
     @field_validator("report_split_order")
     @classmethod
@@ -1219,6 +1264,7 @@ class RunConfig(StrictConfigModel):
         models: Baselines to fit.
         evaluation: Validation choices and plots. Alerts are deferred to v0.2.
         report: Output formats and directory.
+        target: Piecewise RUL cap. The default is no cap.
     """
 
     project: ProjectConfig
@@ -1235,6 +1281,7 @@ class RunConfig(StrictConfigModel):
     models: ModelsConfig
     evaluation: EvaluationConfig
     report: ReportConfig
+    target: TargetConfig = Field(default_factory=TargetConfig)
 
     @model_validator(mode="before")
     @classmethod
@@ -1348,6 +1395,7 @@ __all__ = [
     "LeakageConfig",
     "LeakageStatus",
     "ModelsConfig",
+    "OfficialBenchmarkConfig",
     "OfficialPartitionsConfig",
     "PlotName",
     "PreprocessingConfig",
@@ -1361,6 +1409,7 @@ __all__ = [
     "SplitProtocol",
     "SplitReportName",
     "StrictConfigModel",
+    "TargetConfig",
     "TimeUnit",
     "WindowsConfig",
 ]

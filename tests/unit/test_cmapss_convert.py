@@ -51,8 +51,8 @@ def test_completed_engines_use_unit_order_without_a_shuffle() -> None:
     assert split["test"][0] == "train-086"
 
 
-def test_convert_excludes_test_engines_and_ignores_the_rul_file(tmp_path: Path) -> None:
-    """A tiny FD001 zip becomes tables. The RUL tokens are not labels or features."""
+def test_convert_writes_censored_test_engines_and_the_official_rul_file(tmp_path: Path) -> None:
+    """A tiny FD001 zip becomes tables. The RUL file is test truth, not a feature."""
     archive = tmp_path / "CMAPSSData.zip"
     _write_fd001_zip(archive)
     destination = tmp_path / "cmapss"
@@ -70,6 +70,8 @@ def test_convert_excludes_test_engines_and_ignores_the_rul_file(tmp_path: Path) 
     assert by_id["test-001"] == "censored"
     signals = load_table(destination / "fd001_signals.parquet", LogicalTableRole.SIGNALS)
     assert all("424242" not in row.values() for row in signals.rows)
+    rul_lines = (destination / "fd001_official_rul.txt").read_text(encoding="utf-8").splitlines()
+    assert rul_lines == ["test-001 424242", "test-002 424242"]
     train_ids = (destination / "fd001_train_ids.txt").read_text(encoding="utf-8").split()
     assert train_ids == [f"train-{unit:03d}" for unit in range(1, 8)]
     assert "test-001" not in train_ids
@@ -129,6 +131,15 @@ def test_converted_fixture_runs_the_completed_trajectory_pipeline(
             "test_ids": str(tables / "fd001_test_ids.txt"),
         },
     }
+    evaluation = raw["evaluation"]
+    assert isinstance(evaluation, dict)
+    raw["evaluation"] = {
+        **evaluation,
+        "official_benchmark": {
+            "protocol": "fd001_last_observation",
+            "rul_path": str(tables / "fd001_official_rul.txt"),
+        },
+    }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         document = run_pipeline(
@@ -156,7 +167,19 @@ def test_converted_fixture_runs_the_completed_trajectory_pipeline(
             metric = block[name]
             assert isinstance(metric, dict)
             assert metric["status"] == "COMPUTED"
-    assert "424242" not in (tmp_path / "run" / "report.json").read_text(encoding="utf-8")
+    report_text = (tmp_path / "run" / "report.json").read_text(encoding="utf-8")
+    assert "424242" not in report_text
+    html_text = (tmp_path / "run" / "report.html").read_text(encoding="utf-8")
+    assert "424242" not in html_text
+    assert document["rul_cap"] == 125
+    official = document["official_benchmark"]
+    assert isinstance(official, dict)
+    assert official["protocol"] == "fd001_last_observation"
+    assert official["test"]["engine_count"] == 2
+    secondary = document["secondary_evaluation"]
+    assert isinstance(secondary, dict)
+    assert secondary["role"] == "secondary"
+    assert "test-001" not in document["splits"]["train"]
 
 
 def test_download_and_archive_errors_stay_offline(

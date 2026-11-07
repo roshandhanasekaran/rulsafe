@@ -60,7 +60,10 @@ def test_python_310_is_not_supported(repository_root: Path) -> None:
     project = (repository_root / "pyproject.toml").read_text(encoding="utf-8")
     assert 'requires-python = ">=3.11"' in project
     assert "Programming Language :: Python :: 3.10" not in project
-    assert 'python_version = "3.11"' in project
+    assert 'target-version = "py311"' in project
+    # mypy follows the interpreter that runs it, so a pinned python_version
+    # would hide that interpreter's installed packages.
+    assert "python_version" not in project
     assert not (repository_root / "requirements" / "dev-3.10.lock").exists()
     assert not (repository_root / "requirements" / "filelock-unfixed-on-3.10.txt").exists()
     decision = (

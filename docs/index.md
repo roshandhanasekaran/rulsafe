@@ -4,7 +4,7 @@ v0.1 is a completed-trajectory remaining-useful-life research toolkit. Point it 
 
 The audit lists every check. A check that did not run is `NOT_CHECKED`. It is not a pass, and the report must not say the data are free of leakage.
 
-`censored_policy: reject` writes a partial report with status `FAILED` and no metrics, then stops the run. `report` excludes the history from every split, continues, and names it. Histories are not dropped quietly. SCANIA Component X is a censored fleet and is v0.2. The v0.1 demo is C-MAPSS FD001, scored at the last observation of each test engine. That demo does not exercise a live fleet's censored vehicles. The README says so, and the report must say so.
+`censored_policy: reject` writes a partial report with status `FAILED` and no metrics, then stops the run. `report` excludes the history from every split, continues, and names it. Histories are not dropped quietly. SCANIA Component X is a censored fleet and is v0.2. The v0.1 demo is C-MAPSS FD001. Its headline score is the last observation of each official test engine against `RUL_FD001.txt`. Held-out training engines supply validation, and their per-row scores are a secondary view. That demo does not exercise a live fleet's censored vehicles. The report says so. `report.html` is written next to `report.json`.
 
 This package is not a safety-certified prognostic.
 

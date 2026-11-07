@@ -91,27 +91,36 @@ def _episode_for_asset(
         asset_id=asset_id,
         support=support,
         end_time=end_time,
-        rows=tuple(_normalize_signal(row, config) for row in signal_rows),
+        rows=tuple(_normalize_signal(row, asset_id, config) for row in signal_rows),
         event_row_count=len(event_rows),
     )
 
 
-def _normalize_signal(row: Mapping[str, str], config: RunConfig) -> dict[str, object]:
+def _normalize_signal(
+    row: Mapping[str, str],
+    asset_id: str,
+    config: RunConfig,
+) -> dict[str, object]:
     """Rename configured signal columns onto the contract names.
 
     Args:
         row: Raw signal row.
+        asset_id: Equipment identifier for this episode.
         config: Validated run configuration.
 
     Returns:
-        A row with ``event_time``, ``available_at``, and the allowlisted features.
+        A row with ``asset_id``, ``event_time``, ``available_at``, and features.
     """
     event_time = row.get(config.signals.event_time_column, "")
     if config.signals.available_at_column is None:
         available_at = event_time
     else:
         available_at = row.get(config.signals.available_at_column, "")
-    normalized: dict[str, object] = {"event_time": event_time, "available_at": available_at}
+    normalized: dict[str, object] = {
+        "asset_id": asset_id,
+        "event_time": event_time,
+        "available_at": available_at,
+    }
     feature_columns = config.signals.feature_columns
     if feature_columns == "auto":
         raise ConfigurationError("feature_columns: auto is not resolved in this run yet.")
