@@ -9,7 +9,7 @@ from rulsafe.contract import GapPolicy
 from rulsafe.exceptions import ConfigurationError
 from rulsafe.models.baselines import fit_constant_baseline
 from rulsafe.pipeline.features import build_causal_features
-from rulsafe.pipeline.split import SplitName, assign_splits
+from rulsafe.pipeline.split import SplitName, assign_splits, split_size_risks
 
 
 def test_future_rows_do_not_change_earlier_features() -> None:
@@ -144,6 +144,44 @@ def test_missing_csv_is_rejected(tmp_path: Path) -> None:
     empty.write_text("asset_id\n", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="no data rows"):
         load_table(empty, LogicalTableRole.SIGNALS)
+
+
+def test_split_size_risks_name_an_empty_split_and_a_short_split() -> None:
+    empty = split_size_risks(
+        {
+            SplitName.TRAIN: ("engine_a",),
+            SplitName.VALIDATION: (),
+            SplitName.TEST: (),
+        }
+    )
+    assert [risk["code"] for risk in empty] == ["empty_split", "empty_split"]
+    assert empty[0]["split"] == "validation"
+    assert empty[0]["severity"] == "warning"
+    assert "empty" in str(empty[0]["message"])
+    assert empty[0]["asset_count"] == 0
+
+    short = split_size_risks(
+        {
+            SplitName.TRAIN: ("engine_a", "engine_b"),
+            SplitName.VALIDATION: ("engine_c",),
+            SplitName.TEST: ("engine_d", "engine_e"),
+        },
+        minimum=2,
+    )
+    assert [risk["code"] for risk in short] == ["split_below_minimum"]
+    assert short[0]["split"] == "validation"
+    assert short[0]["asset_count"] == 1
+    assert short[0]["minimum_asset_count"] == 2
+    assert (
+        split_size_risks(
+            {
+                SplitName.TRAIN: ("engine_a",),
+                SplitName.VALIDATION: ("engine_b",),
+                SplitName.TEST: ("engine_c",),
+            }
+        )
+        == []
+    )
 
 
 def test_group_holdout_puts_each_asset_in_one_split() -> None:

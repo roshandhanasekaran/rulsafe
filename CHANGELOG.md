@@ -27,7 +27,8 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Python 3.10 is not supported. `requires-python` is `>=3.11`. The 3.10 lock and the filelock ignore list are removed.
 - The build backend is pinned to `hatchling==1.33.0`.
 - Gitleaks in CI scans the full git history.
-- A censored or unsupported history is excluded from train, validation, and test. `censored_policy: reject` records that exclusion in the report.
+- `censored_policy: reject` stops the run with an error. `censored_policy: report` excludes the history from every split, continues, and names it in the report.
+- An empty split, or a split below the minimum of one asset, is a warning in the report `risks`. The synthetic demo has a completed asset in train, validation, and test.
 
 ### Not in this release
 

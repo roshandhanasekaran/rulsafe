@@ -5,8 +5,9 @@ It prepares causal training rows, keeps train, validation, and final test
 apart, and writes an audit whose coverage is explicit. It is not a web
 application and it is not a safety-certified prognostic.
 
-Censored fleet data, including SCANIA Component X, is v0.2. v0.1 rejects or
-reports censored and unsupported histories instead of dropping them.
+Censored fleet data, including SCANIA Component X, is v0.2. v0.1 stops when
+``censored_policy`` is ``reject``, and when it is ``report`` names the
+history and leaves it out of every split.
 """
 
 from rulsafe._version import __version__ as __version__

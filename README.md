@@ -4,7 +4,7 @@ RULSafe is a local, leakage-safe **completed-trajectory remaining-useful-life re
 
 It is a Python package and a command-line tool. It is not a web application. It is research and decision-support software, **not a safety-certified prognostic**, and a finished audit is not a guarantee that every leak was found.
 
-v0.1 does not silently drop a history it cannot score. A censored or unsupported history is **rejected or reported**. SCANIA Component X, the censored heavy-truck fleet, is **v0.2**. The v0.1 demo is **C-MAPSS FD001**, scored at the last observation of each test engine, together with small synthetic fixtures.
+v0.1 does not silently drop a history it cannot score. `censored_policy: reject` stops the run with an error. `censored_policy: report` leaves the history out of every split, continues, and names it in the report. SCANIA Component X, the censored heavy-truck fleet, is **v0.2**. The v0.1 demo is **C-MAPSS FD001**, scored at the last observation of each test engine, together with small synthetic fixtures.
 
 ## Install
 
@@ -31,7 +31,7 @@ rulsafe datasets list
 
 `rulsafe validate` checks the YAML contract only. It does not open the data files.
 
-Run the synthetic completed-trajectory demo from the repository root. It writes `report.json`. `engine_e` is censored and stays in that report. The constant baseline is fit on the training split only. The tree baseline is `NOT_COMPUTED`.
+Run the synthetic completed-trajectory demo from the repository root. It writes `report.json`. `engine_e` is censored: the demo uses `censored_policy: report`, so that engine is named in the report and is not in train, validation, or test. The other engines are completed, and each of those splits is non-empty. The constant baseline is fit on the training split only and scored on validation and test. The tree baseline is `NOT_COMPUTED`. An empty or undersized split is a warning in `risks`, not a silent `NOT_COMPUTED` with no explanation.
 
 ```bash
 rulsafe demo synthetic --output ./rulsafe-runs/synthetic
@@ -104,11 +104,11 @@ MetricValue.computed(12.5).to_json()
 ## v0.1 contract
 
 - **Question.** Remaining useful life on a completed trajectory. C-MAPSS test engines are scored at the **last observation** only.
-- **Splits.** `official_partitions` or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. `global_time` is rejected: it is deferred to v0.2. The headline model is chosen on validation.
+- **Splits.** `official_partitions` or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. `global_time` is rejected: it is deferred to v0.2. The headline model is chosen on validation. A split with no assets, or fewer assets than the minimum of one, is a warning recorded in the report `risks`.
 - **Features.** At time `t`, a feature uses only records knowable at `t`. The default gap policy is `none`. Bounded forward fill is allowed. Linear interpolation is rejected.
 - **Preprocessing.** Clip bounds and scalers fit on the training split only, with a membership record.
 - **Baselines.** A training constant, and one histogram gradient boosting model. Persistence is rejected. Age and logistic regression are not in v0.1.
-- **Censored histories.** `censored_policy` is `reject` or `report`. Either way the history is excluded from training and named in the report. `drop` and `unknown_policy: exclude_from_loss` are errors.
+- **Censored histories.** `censored_policy: reject` stops the run with an error and does not fit a split. `censored_policy: report` excludes the history from train, validation, and test, continues, and names it in the report. `drop` and `unknown_policy: exclude_from_loss` are errors.
 - **Audit.** Statuses are `CONFIRMED`, `WARNING`, `NOT_CHECKED`, and `PASS`. A check with no finding is reported as `NOT_CHECKED`, not as a pass. A metric with no number serialises as `{"value": null, "status": "NOT_COMPUTED"}` or `{"value": null, "status": "DISABLED"}`. It is not stored as zero.
 - **Not in v0.1.** `global_time` and `alerts` are rejected with an error that they are deferred to v0.2. They are not dropped silently.
 

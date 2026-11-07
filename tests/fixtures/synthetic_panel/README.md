@@ -3,7 +3,7 @@
 These fixtures are not generated yet. The later suite needs a tiny panel with no third-party data:
 
 - a completed trajectory that can pass the audit
-- a censored or unsupported history, which v0.1 must reject or report and must not drop
+- a censored or unsupported history. `reject` stops the run with an error. `report` excludes it from every split, continues, and records it
 - a delayed record (`available_at` after `event_time`)
 - a replacement that starts a new episode
 - a future value planted in a window

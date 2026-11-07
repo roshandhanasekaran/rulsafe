@@ -17,7 +17,7 @@ A confirmed `fail_on` check will abort training after the report is written and 
 
 `random_split`, `future_labels`, `future_in_features`, `post_event_features`, `delayed_record_leak`, `interpolation_leak`, `entity_leakage`, `scaler_leakage` (this id also covers transformer membership), `target_in_features`, `event_metadata_in_features`, `silent_negative_censoring`, `unsupported_history`, `replacement_episode_mix`, `test_used_for_choices`, `official_hidden_label_reconstruction`.
 
-`unsupported_history` is the v0.1 check that a censored or unsupported trajectory was dropped or relabeled without a finding. The allowed dispositions are `reject` and `report`.
+`unsupported_history` is the v0.1 check that a censored or unsupported trajectory was dropped or relabeled without a finding. `censored_policy: reject` stops the run with an error. `report` excludes the history from every split, continues, and names it in the report.
 
 `high_association_with_label` and `backend_internal_split` warn by default.
 

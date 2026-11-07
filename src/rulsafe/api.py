@@ -165,7 +165,8 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
 
     Group holdout on CSV files is implemented. The constant baseline is fit
     on training targets only. The tree baseline is reported as not computed.
-    Censored histories stay in the JSON report and out of every split.
+    ``censored_policy`` ``report`` keeps censored histories in the JSON report
+    and out of every split. ``reject`` stops the run with an error.
     Official partitions, Parquet, and the C-MAPSS demo are not implemented yet.
 
     Args:
@@ -178,7 +179,8 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
 
     Raises:
         ConfigurationError: The files or protocol are outside this slice.
-        ContractError: The training split has no completed-trajectory target.
+        ContractError: ``censored_policy`` is ``reject`` and a censored or
+            unsupported history is present, or the training split has no target.
     """
     from rulsafe.pipeline.execute import execute_group_holdout
 

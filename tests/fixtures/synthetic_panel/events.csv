@@ -4,3 +4,5 @@ engine_b,2,2,failure,bearing
 engine_c,2,2,failure,bearing
 engine_d,2,2,failure,bearing
 engine_e,1,1,censored_end,left-study
+engine_f,2,2,failure,bearing
+engine_g,2,2,failure,bearing

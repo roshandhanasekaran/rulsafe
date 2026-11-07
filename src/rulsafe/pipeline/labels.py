@@ -38,9 +38,9 @@ def disposition_for_history(
 
     Completed trajectories are trainable. Official C-MAPSS test endings are
     scored at the last observation. Every other history follows
-    ``censored_policy``. ``reject`` and ``report`` both leave the history out
-    of training. ``reject`` records an exclusion. ``report`` records the same
-    exclusion and keeps the history visible. Neither path removes it quietly.
+    ``censored_policy``. ``reject`` stops the run with an error. ``report``
+    leaves the history out of every split, continues, and keeps an audit row.
+    Neither path drops the history quietly.
 
     Args:
         support: What kind of history this is.
@@ -68,9 +68,8 @@ def assign_remaining_life(
     """Assign remaining life, or record that this history is not scored.
 
     A censored or unsupported history returns None when the policy is
-    ``report``. It raises when the policy is ``reject``. The caller must
-    keep the history in the report either way. Completed histories return
-    ``episode_end - prediction_time``.
+    ``report``. It raises when the policy is ``reject``, which stops the run.
+    Completed histories return ``episode_end - prediction_time``.
 
     Args:
         support: What kind of history this is.

@@ -769,9 +769,11 @@ class ContractConfig(StrictConfigModel):
 class LabelingConfig(StrictConfigModel):
     """The v0.1 question: remaining useful life on a completed trajectory.
 
-    A censored or unsupported history is rejected or reported. It is never
-    dropped without a finding. ``unknown_policy: exclude_from_loss`` is the
-    old silent-exclusion setting and is rejected.
+    ``censored_policy`` ``reject`` stops the run with an error when a censored
+    or unsupported history is present. ``report`` leaves that history out of
+    every split, continues, and names it in the report. Neither policy drops
+    the history quietly. ``unknown_policy: exclude_from_loss`` is the old
+    silent-exclusion setting and is rejected.
 
     Attributes:
         task: Completed-trajectory RUL, or the C-MAPSS last-observation adapter.

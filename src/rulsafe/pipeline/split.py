@@ -7,11 +7,15 @@ once after that choice is frozen.
 """
 
 import random
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from enum import Enum
 
 from rulsafe.config import SplitProtocol
 from rulsafe.exceptions import ConfigurationError, not_implemented
+
+# One asset is the smallest split that can still be scored. Fewer than this
+# is recorded as a report risk. An empty split is the count of zero.
+MINIMUM_SPLIT_ASSET_COUNT = 1
 
 
 class SplitName(str, Enum):
@@ -76,6 +80,49 @@ def assign_splits(
         SplitName.VALIDATION: tuple(ordered[train_end:validation_end]),
         SplitName.TEST: tuple(ordered[validation_end:]),
     }
+
+
+def split_size_risks(
+    split: Mapping[SplitName, Sequence[str]],
+    *,
+    minimum: int = MINIMUM_SPLIT_ASSET_COUNT,
+) -> list[dict[str, object]]:
+    """Warn when a split is empty or has fewer assets than ``minimum``.
+
+    Args:
+        split: Asset ids by split.
+        minimum: Smallest asset count that does not raise a risk. Must be
+            at least 1.
+
+    Returns:
+        One risk mapping per short split, in train, validation, test order.
+        The list is empty when every split meets ``minimum``.
+    """
+    risks: list[dict[str, object]] = []
+    for name in (SplitName.TRAIN, SplitName.VALIDATION, SplitName.TEST):
+        count = len(split[name])
+        if count >= minimum:
+            continue
+        if count == 0:
+            code = "empty_split"
+            message = (
+                f"Split {name.value} is empty (0 assets), below the minimum of {minimum}. "
+                "Metrics for this split are not computed."
+            )
+        else:
+            code = "split_below_minimum"
+            message = f"Split {name.value} has {count} assets, below the minimum of {minimum}."
+        risks.append(
+            {
+                "severity": "warning",
+                "code": code,
+                "split": name.value,
+                "asset_count": count,
+                "minimum_asset_count": minimum,
+                "message": message,
+            }
+        )
+    return risks
 
 
 def _largest_remainder_counts(

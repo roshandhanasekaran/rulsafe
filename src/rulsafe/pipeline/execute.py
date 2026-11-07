@@ -1,18 +1,20 @@
 """Run a completed-trajectory check for group holdout and CSV inputs.
 
 The histogram gradient boosting baseline is recorded as ``NOT_COMPUTED``.
-The constant baseline is fit on training targets only. A censored or
-unsupported history is rejected or reported and is not placed in a split.
+The constant baseline is fit on training targets only. ``censored_policy``
+``reject`` stops the run. ``report`` leaves those histories out of every
+split, continues, and names them in the report.
 """
 
 import json
+import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from rulsafe.config import LeakageCheckId, LeakageStatus, RunConfig, SplitProtocol
 from rulsafe.contract import LogicalTableRole
 from rulsafe.eval.metrics import MetricsReport, SplitMetrics
-from rulsafe.exceptions import ConfigurationError
+from rulsafe.exceptions import ConfigurationError, ContractError
 from rulsafe.io.files import load_table
 from rulsafe.leakage.checks import LeakageFinding
 from rulsafe.leakage.report import with_documented_coverage
@@ -27,7 +29,12 @@ from rulsafe.pipeline.labels import (
     assign_remaining_life,
     disposition_for_history,
 )
-from rulsafe.pipeline.split import SplitName, assign_splits
+from rulsafe.pipeline.split import (
+    MINIMUM_SPLIT_ASSET_COUNT,
+    SplitName,
+    assign_splits,
+    split_size_risks,
+)
 from rulsafe.report.json import MetricValue
 
 
@@ -49,6 +56,8 @@ def execute_group_holdout(
 
     Raises:
         ConfigurationError: The files or the protocol cannot be used for this slice.
+        ContractError: ``censored_policy`` is ``reject`` and a censored or
+            unsupported history is present. The run stops before a split is fit.
     """
     holdout = config.split.group_holdout
     if config.split.protocol is not SplitProtocol.GROUP_HOLDOUT or holdout is None:
@@ -63,6 +72,7 @@ def execute_group_holdout(
     )
     episodes = build_episodes(tables, config)
     supervised, excluded = _separate_training_histories(episodes, config)
+    _stop_when_censored_histories_are_rejected(excluded)
     labeled = _labeled_rows(supervised, config)
     split = assign_splits(
         config.split.protocol,
@@ -79,6 +89,9 @@ def execute_group_holdout(
     ]
     constant = fit_constant_baseline(training_targets=training_targets)
     metrics = _metrics_report(labeled, split, constant)
+    risks = split_size_risks(split, minimum=MINIMUM_SPLIT_ASSET_COUNT)
+    for risk in risks:
+        warnings.warn(str(risk["message"]), UserWarning, stacklevel=2)
     censored_ids = tuple(
         episode.asset_id
         for episode in episodes
@@ -101,6 +114,7 @@ def execute_group_holdout(
         leakage,
         metrics,
         constant,
+        risks,
     )
     output_directory.mkdir(parents=True, exist_ok=True)
     report_path = output_directory / "report.json"
@@ -132,6 +146,33 @@ def _separate_training_histories(
         else:
             supervised.append(episode)
     return tuple(supervised), tuple(excluded)
+
+
+def _stop_when_censored_histories_are_rejected(
+    excluded: Sequence[tuple[Episode, HistoryDisposition]],
+) -> None:
+    """Stop the run when ``censored_policy`` is ``reject``.
+
+    Args:
+        excluded: Histories left out of every split, with their disposition.
+
+    Raises:
+        ContractError: At least one history was rejected. The message names
+            the assets. Nothing is fit and no report is written.
+    """
+    rejected = [
+        episode.asset_id
+        for episode, disposition in excluded
+        if disposition is HistoryDisposition.REJECT
+    ]
+    if not rejected:
+        return
+    listed = ", ".join(rejected)
+    raise ContractError(
+        "censored_policy reject stopped the run. "
+        "Censored or unsupported histories were not placed in a split "
+        f"and were not used for training: {listed}."
+    )
 
 
 def _labeled_rows(episodes: Sequence[Episode], config: RunConfig) -> list[dict[str, object]]:
@@ -377,26 +418,6 @@ def _number(value: object) -> float:
         raise ConfigurationError(f"Expected a number, got {value!r}.") from error
 
 
-def _exclusion_detail(disposition: HistoryDisposition) -> str:
-    """Describe why a history was kept out of training.
-
-    Args:
-        disposition: ``reject`` or ``report``.
-
-    Returns:
-        A sentence for the report entry.
-    """
-    if disposition is HistoryDisposition.REJECT:
-        return (
-            "Rejected and excluded from training. "
-            "A censored or unsupported history is not a training row."
-        )
-    return (
-        "Reported and excluded from training. "
-        "A censored or unsupported history is not a training row."
-    )
-
-
 def _document(
     config: RunConfig,
     episodes: Sequence[Episode],
@@ -406,6 +427,7 @@ def _document(
     leakage: LeakageSuiteResult,
     metrics: MetricsReport,
     constant: FittedBaseline,
+    risks: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
     """Build the JSON report body.
 
@@ -418,6 +440,7 @@ def _document(
         leakage: Audit rows, including documented coverage.
         metrics: Validation and test metrics.
         constant: Training-only constant model.
+        risks: Warnings for empty or undersized splits.
 
     Returns:
         A JSON-ready mapping.
@@ -437,11 +460,15 @@ def _document(
                 "support": episode.support.value,
                 "disposition": disposition.value,
                 "used_for_training": False,
-                "detail": _exclusion_detail(disposition),
+                "detail": (
+                    "Reported and excluded from every split. "
+                    "A censored or unsupported history is not a training row."
+                ),
             }
             for episode, disposition in excluded
         ],
         "splits": {name.value: list(identifiers) for name, identifiers in split.items()},
+        "risks": [dict(risk) for risk in risks],
         "constant_training_value": constant.constant_value,
         "constant_training_row_count": constant.training_row_count,
         "gap_policy": config.signals.gap_policy.value,
