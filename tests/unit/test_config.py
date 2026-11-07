@@ -128,6 +128,14 @@ def test_identifiers_and_event_metadata_cannot_be_features(load_example) -> None
     with pytest.raises(ConfigurationError, match="Event metadata"):
         RunConfig.from_mapping(document)
 
+    for column_name in ("remaining_life", "Remaining-Life", "engine_rul"):
+        document = load_example("synthetic_panel.yaml")
+        signals = document["signals"]
+        assert isinstance(signals, dict)
+        signals["feature_columns"] = [column_name]
+        with pytest.raises(ConfigurationError, match="Target column"):
+            RunConfig.from_mapping(document)
+
 
 def test_warehouse_connector_is_rejected(load_example) -> None:
     document = load_example("synthetic_panel.yaml")

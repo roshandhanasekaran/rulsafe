@@ -3,6 +3,7 @@
 These types describe the contract. They do not read files or build windows.
 """
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -87,10 +88,16 @@ TARGET_COLUMN_NAMES: frozenset[str] = frozenset(
         "label",
         "target",
         "rul",
+        "ttf",
+        "remaining_life",
         "remaining_useful_life",
         "failure_within_horizon",
+        "time_to_failure",
     }
 )
+
+_TARGET_TOKENS: frozenset[str] = frozenset({"label", "target", "rul", "ttf"})
+_CAMEL_BOUNDARY = re.compile(r"([a-z0-9])([A-Z])")
 
 _INTERPOLATION_POLICIES: frozenset[str] = frozenset(
     {
@@ -147,13 +154,38 @@ def column_is_identifier(column_name: str, identifier_column: str) -> bool:
 def column_is_target_name(column_name: str) -> bool:
     """Return whether a column name is an obvious label or target.
 
+    Matching ignores case and separators, so ``remaining_life``,
+    ``Remaining-Life``, and ``remainingLife`` are the same name. A token
+    that is itself a target word matches too, so ``engine_rul`` matches
+    and ``rule`` does not.
+
     Args:
         column_name: Candidate feature column.
 
     Returns:
-        True when the name matches the reserved target names.
+        True when the normalized name or one of its tokens is a target name.
     """
-    return column_name.casefold() in TARGET_COLUMN_NAMES
+    joined, tokens = _target_pieces(column_name)
+    phrases = {name.replace("_", "") for name in TARGET_COLUMN_NAMES}
+    if joined in phrases:
+        return True
+    if any(token in _TARGET_TOKENS for token in tokens):
+        return True
+    return "remaininglife" in joined or "remainingusefullife" in joined
+
+
+def _target_pieces(column_name: str) -> tuple[str, tuple[str, ...]]:
+    """Split a column name into a joined form and its tokens.
+
+    Args:
+        column_name: Raw feature name.
+
+    Returns:
+        The alphanumeric characters in order, and the tokens between separators.
+    """
+    spaced = _CAMEL_BOUNDARY.sub(r"\1_\2", column_name)
+    tokens = tuple(part for part in re.split(r"[^A-Za-z0-9]+", spaced.casefold()) if part)
+    return "".join(tokens), tokens
 
 
 def parse_gap_policy(raw_policy: str) -> GapPolicy:

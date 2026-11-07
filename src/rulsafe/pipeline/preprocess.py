@@ -1,9 +1,10 @@
 """Train-only preprocessing and the membership record that proves it.
 
 Clip bounds and scalers are fit on the training rows only. Fitting them on
-validation or test is confirmed leakage. A column with no variance is scaled
-by 1 after centering, so a constant column becomes zero under the standard
-scaler and does not divide by zero.
+validation or test is confirmed leakage. A column whose spread is only
+float dust is not divided by that dust: it is centered and then left on a
+scale of 1, so a near-constant column becomes about zero on every
+interpreter instead of exploding on one of them.
 """
 
 import hashlib
@@ -13,6 +14,11 @@ from dataclasses import dataclass
 
 from rulsafe.config import ScalerName
 from rulsafe.exceptions import ContractError
+
+# Spread at or below this fraction of the column's magnitude is float dust.
+# CPython and NumPy builds do not agree on those residuals. Treating them as
+# a real scale makes the same FD001 matrix train a different tree.
+RELATIVE_SCALE_TOLERANCE = 1e-8
 
 
 @dataclass(frozen=True)
@@ -57,6 +63,7 @@ class FittedPreprocessor:
         scale: Value divided by after centering. Never zero.
         scaler: ``standard``, ``minmax``, or ``none``.
         membership: Train-split membership record.
+        fitted_asset_ids: Asset id of every row passed into the fit, in that order.
     """
 
     feature_names: tuple[str, ...]
@@ -66,6 +73,7 @@ class FittedPreprocessor:
     scale: Mapping[str, float]
     scaler: str
     membership: TransformerMembership
+    fitted_asset_ids: tuple[str, ...] = ()
 
     def transform(self, features: Mapping[str, float | None]) -> dict[str, float | None]:
         """Clip and scale one row with the training bounds.
@@ -98,9 +106,11 @@ def fit_preprocessors(
     """Fit clip bounds and a scaler on training rows.
 
     Percentiles use linear interpolation on the sorted finite training
-    values. The standard scaler then subtracts the mean of the clipped
-    values and divides by their population standard deviation. Min-max
-    divides by the clipped range. A zero divisor is replaced by 1.
+    values. Means and variances use ``math.fsum``. The standard scaler then
+    subtracts the mean of the clipped values and divides by their population
+    standard deviation. Min-max divides by the clipped range. A deviation
+    that is zero, or only float dust relative to the column magnitude, is
+    replaced by 1 so the column is centered and not amplified.
 
     Args:
         rows: Training feature rows. Validation and test rows are not accepted.
@@ -162,6 +172,7 @@ def fit_preprocessors(
         scale=scale,
         scaler=scaler.value,
         membership=membership,
+        fitted_asset_ids=tuple(asset_ids),
     )
 
 
@@ -179,13 +190,48 @@ def _center_and_scale(clipped: Sequence[float], scaler: ScalerName) -> tuple[flo
         return 0.0, 1.0
     if scaler is ScalerName.MINMAX:
         low = min(clipped)
-        span = max(clipped) - low
-        return low, span if span > 0.0 else 1.0
-    count = float(len(clipped))
-    mean = sum(clipped) / count
-    variance = sum((value - mean) ** 2 for value in clipped) / count
-    deviation = math.sqrt(variance)
-    return mean, deviation if deviation > 0.0 else 1.0
+        high = max(clipped)
+        span = high - low
+        magnitude = max(1.0, abs(low), abs(high))
+        return low, _usable_scale(span, magnitude)
+    mean, deviation = _mean_and_deviation(clipped)
+    magnitude = max(1.0, abs(mean), max(abs(value) for value in clipped))
+    return mean, _usable_scale(deviation, magnitude)
+
+
+def _mean_and_deviation(values: Sequence[float]) -> tuple[float, float]:
+    """Return the mean and population standard deviation.
+
+    Args:
+        values: Finite sample. It is not empty.
+
+    Returns:
+        Mean and population standard deviation. A constant sample has
+        deviation 0.
+    """
+    count = float(len(values))
+    mean = math.fsum(values) / count
+    variance = math.fsum((value - mean) ** 2 for value in values) / count
+    if variance <= 0.0:
+        return mean, 0.0
+    return mean, math.sqrt(variance)
+
+
+def _usable_scale(deviation: float, magnitude: float) -> float:
+    """Return a divisor that ignores float dust.
+
+    Args:
+        deviation: Spread of the column. Zero means the column is constant.
+        magnitude: Size of the column, at least 1.
+
+    Returns:
+        ``deviation`` when it is large enough to be a real scale, otherwise 1.
+    """
+    if not math.isfinite(deviation):
+        return 1.0
+    if deviation <= RELATIVE_SCALE_TOLERANCE * magnitude:
+        return 1.0
+    return deviation
 
 
 def _percentile(values: Sequence[float], quantile: float) -> float:

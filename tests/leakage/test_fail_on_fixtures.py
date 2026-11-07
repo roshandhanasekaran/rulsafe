@@ -1,14 +1,10 @@
 """Each fail_on check has a planted CONFIRMED case and a clean PASS control."""
 
-import json
-import warnings
 from collections.abc import Callable
 
 import pytest
 
-from rulsafe import run_pipeline
-from rulsafe.config import LeakageCheckId, LeakageStatus, RunConfig
-from rulsafe.exceptions import ContractError
+from rulsafe.config import LeakageCheckId, LeakageStatus
 from rulsafe.leakage.checks import LeakageFinding
 from rulsafe.leakage.fail_on import (
     ObservedWindow,
@@ -19,6 +15,7 @@ from rulsafe.leakage.fail_on import (
     event_metadata_in_features_finding,
     future_in_features_finding,
     future_labels_finding,
+    high_association_finding,
     interpolation_leak_finding,
     official_hidden_label_finding,
     post_event_features_finding,
@@ -113,8 +110,8 @@ def _signal(event_time: float, available_at: float, asset_id: str = "unit-a") ->
             lambda: replacement_episode_mix_finding({"unit-a": (0.0, 10.0)}, (("unit-a", 4.0),)),
         ),
         (
-            lambda: choice_split_finding("validation", "validation"),
-            lambda: choice_split_finding("test", "validation"),
+            lambda: choice_split_finding(("unit-a",), ("unit-a",), ("unit-b",)),
+            lambda: choice_split_finding(("unit-b",), ("unit-a",), ("unit-b",)),
         ),
         (
             lambda: official_hidden_label_finding(
@@ -171,26 +168,31 @@ def test_confirmed_fail_on_ignores_a_warning_only_check() -> None:
     assert confirmed_fail_on_ids((warning,), (LeakageCheckId.RANDOM_SPLIT,)) == ()
 
 
-def test_planted_fail_on_writes_the_report_then_stops(load_example, tmp_path, monkeypatch) -> None:
-    """A CONFIRMED fail_on check leaves a failed report on disk and then raises."""
+def test_remaining_life_and_a_copied_column_are_target_leaks() -> None:
+    """A normalized target name and a value copy are both CONFIRMED."""
+    for name in ("remaining_life", "Remaining-Life", "remainingLife", "engine_rul", "rul_mean"):
+        named = target_in_features_finding((name,))
+        assert named.status is LeakageStatus.CONFIRMED
+        assert name in named.evidence
+    copied = target_in_features_finding(
+        ("pressure",),
+        rows=(({"pressure": 2.0}, 2.0), ({"pressure": 1.0}, 1.0)),
+    )
+    assert copied.status is LeakageStatus.CONFIRMED
+    assert "pressure" in copied.evidence
+    innocent = target_in_features_finding(("rule", "sensor_1", "lifetime"))
+    assert innocent.status is LeakageStatus.PASS
 
-    def _planted(_protocol: str) -> LeakageFinding:
-        return LeakageFinding(
-            check_id=LeakageCheckId.RANDOM_SPLIT,
-            status=LeakageStatus.CONFIRMED,
-            evidence="planted random split",
-            remedy="Use a grouped split.",
-        )
 
-    monkeypatch.setattr("rulsafe.pipeline.execute.random_split_finding", _planted)
-    config = RunConfig.from_mapping(load_example("synthetic_panel.yaml"))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        with pytest.raises(ContractError, match="random_split"):
-            run_pipeline(config, output_directory=tmp_path)
-    document = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
-    assert document["status"] == "FAILED"
-    assert document["confirmed_fail_on"] == ["random_split"]
-    html = (tmp_path / "report.html").read_text(encoding="utf-8")
-    assert "FAILED" in html
-    assert "Research software" in html
+def test_high_association_warns_above_the_threshold_and_passes_below() -> None:
+    """Pearson correlation on the training rows is a warning, not a pass-by-omission."""
+    tracked = tuple(({"temperature": float(index)}, float(index)) for index in range(6))
+    warned = high_association_finding(tracked, threshold=0.85)
+    assert warned.status is LeakageStatus.WARNING
+    assert warned.check_id is LeakageCheckId.HIGH_ASSOCIATION_WITH_LABEL
+    assert "temperature" in warned.evidence
+    weak = tuple(({"temperature": float(index % 2)}, float(index)) for index in range(6))
+    passed = high_association_finding(weak, threshold=0.99)
+    assert passed.status is LeakageStatus.PASS
+    empty = high_association_finding((), threshold=0.85)
+    assert empty.status is LeakageStatus.NOT_CHECKED

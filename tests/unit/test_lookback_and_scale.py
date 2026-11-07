@@ -222,3 +222,65 @@ def test_standard_scaler_and_clip_are_fit_on_train_rows_only() -> None:
         scaler=ScalerName.MINMAX,
     )
     assert flat.transform({"temperature": 3.0})["temperature"] == pytest.approx(0.0)
+
+
+# Python 3.11 and 3.12 disagreed on FD001 when a near-zero deviation was a divisor.
+# This is the absolute tolerance those transformed columns must meet.
+CROSS_VERSION_ABSOLUTE_TOLERANCE = 1e-6
+
+
+def test_float_dust_uses_scale_one_and_stays_within_the_stated_tolerance() -> None:
+    """A dusty constant and an exact constant stay within 1e-6 after scaling."""
+    exact_rows = tuple({"temperature": 100.0} for _ in range(8))
+    dusty_rows = tuple(
+        {"temperature": 100.0 + (1e-12 if index % 2 == 0 else -1e-12)} for index in range(8)
+    )
+    exact = fit_preprocessors(
+        exact_rows,
+        asset_ids=tuple(f"unit-{index}" for index in range(8)),
+        feature_names=("temperature",),
+        clip_percentiles=(0.0, 100.0),
+        scaler=ScalerName.STANDARD,
+    )
+    dusty = fit_preprocessors(
+        dusty_rows,
+        asset_ids=tuple(f"unit-{index}" for index in range(8)),
+        feature_names=("temperature",),
+        clip_percentiles=(0.0, 100.0),
+        scaler=ScalerName.STANDARD,
+    )
+    assert exact.scale["temperature"] == 1.0
+    assert dusty.scale["temperature"] == 1.0
+    exact_values = [exact.transform(row)["temperature"] for row in exact_rows]
+    dusty_values = [dusty.transform(row)["temperature"] for row in dusty_rows]
+    for left, right in zip(exact_values, dusty_values, strict=True):
+        assert left is not None
+        assert right is not None
+        assert left == pytest.approx(right, abs=CROSS_VERSION_ABSOLUTE_TOLERANCE)
+    varied = fit_preprocessors(
+        ({"temperature": 100.0}, {"temperature": 101.0}),
+        asset_ids=("a", "b"),
+        feature_names=("temperature",),
+        clip_percentiles=(0.0, 100.0),
+        scaler=ScalerName.STANDARD,
+    )
+    assert varied.scale["temperature"] != 1.0
+
+
+def test_slope_of_float_dust_is_exactly_zero() -> None:
+    """A flat sensor plus 1e-15 noise has slope 0, not a tiny number that explodes."""
+    windows = build_windows(
+        rows=(
+            _row(0, 0, 5.0),
+            _row(1, 1, 5.0 + 1e-15),
+            _row(2, 2, 5.0 - 1e-15),
+        ),
+        lookback=4,
+        stride=1,
+        discard_straddle_split=False,
+        prediction_times=(2,),
+        gap_policy=GapPolicy.NONE,
+        maximum_gap=None,
+    )
+    features = features_from_windows(windows, ("temperature",))[0]
+    assert features["temperature_slope"] == 0.0

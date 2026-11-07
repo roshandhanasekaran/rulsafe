@@ -2,10 +2,13 @@
 
 Each function returns ``PASS`` or ``CONFIRMED`` from the rows it is given.
 ``delayed_record_leak`` returns ``NOT_CHECKED`` when ``available_at`` was not
-supplied. A planted input is how the tests show ``CONFIRMED``. The pipeline
-passes the windows and labels it actually used.
+supplied. ``high_association_with_label`` returns ``WARNING`` when a training
+feature tracks the target. A planted input is how the tests show
+``CONFIRMED``. The pipeline passes the windows, labels, and fit records it
+actually used.
 """
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -285,14 +288,22 @@ def scaler_leakage_finding(
     )
 
 
-def target_in_features_finding(feature_names: Sequence[str]) -> LeakageFinding:
-    """Confirm a target name used as a feature.
+def target_in_features_finding(
+    feature_names: Sequence[str],
+    rows: Sequence[tuple[Mapping[str, float | None], float]] | None = None,
+) -> LeakageFinding:
+    """Confirm a target used as a feature.
+
+    A name matches after separators and capitals are removed, and a lookback
+    suffix is stripped first. A feature whose values equal the target on the
+    training rows is the same leak when the column was given an innocent name.
 
     Args:
         feature_names: Names the model received, including lookback suffixes.
+        rows: Training ``(features, target)`` pairs. Omit them to check names only.
 
     Returns:
-        ``CONFIRMED`` when a name or its unsuffixed base is a target name.
+        ``CONFIRMED`` when a name is a target name or a feature copies the target.
     """
     for name in feature_names:
         if any(column_is_target_name(candidate) for candidate in _name_and_base(name)):
@@ -302,10 +313,19 @@ def target_in_features_finding(feature_names: Sequence[str]) -> LeakageFinding:
                 f"Feature {name} is a target column.",
                 "Remove the target from the feature allowlist.",
             )
+    if rows:
+        for name in feature_names:
+            if _feature_copies_target(rows, name):
+                return _finding(
+                    LeakageCheckId.TARGET_IN_FEATURES,
+                    LeakageStatus.CONFIRMED,
+                    f"Feature {name} equals the training target on every scored row.",
+                    "Remove the column that copies remaining life.",
+                )
     return _finding(
         LeakageCheckId.TARGET_IN_FEATURES,
         LeakageStatus.PASS,
-        "No feature name is a target column.",
+        "No feature name is a target column, and no feature copies the training target.",
         "Keep remaining life out of the feature allowlist.",
     )
 
@@ -444,34 +464,108 @@ def replacement_episode_mix_finding(
 
 
 def choice_split_finding(
-    early_stopping_split: str | None,
-    selection_split: str,
+    early_stopping_asset_ids: Sequence[str],
+    selection_asset_ids: Sequence[str],
+    test_asset_ids: Sequence[str],
 ) -> LeakageFinding:
-    """Confirm a choice that read the test split.
+    """Confirm a choice that read a test asset.
 
     Args:
-        early_stopping_split: Split used for early stopping, or None.
-        selection_split: Split used to choose the headline model.
+        early_stopping_asset_ids: Assets whose rows were passed to early stopping.
+        selection_asset_ids: Assets whose scores chose the headline model.
+        test_asset_ids: Assets in the final test split.
 
     Returns:
-        ``CONFIRMED`` when either split is ``test``.
+        ``CONFIRMED`` when early stopping or model selection saw a test asset.
     """
-    if early_stopping_split == "test" or selection_split == "test":
+    test_ids = set(test_asset_ids)
+    early_overlap = sorted(set(early_stopping_asset_ids) & test_ids)
+    selection_overlap = sorted(set(selection_asset_ids) & test_ids)
+    if early_overlap or selection_overlap:
         return _finding(
             LeakageCheckId.TEST_USED_FOR_CHOICES,
             LeakageStatus.CONFIRMED,
             (
-                f"Early stopping split is {early_stopping_split} and "
-                f"selection split is {selection_split}."
+                "Early stopping saw test assets "
+                f"{early_overlap or 'none'}, and model selection saw test assets "
+                f"{selection_overlap or 'none'}."
             ),
             "Choose the iteration count and the headline model on validation only.",
         )
-    stopping = early_stopping_split if early_stopping_split is not None else "not applied"
     return _finding(
         LeakageCheckId.TEST_USED_FOR_CHOICES,
         LeakageStatus.PASS,
-        f"Early stopping is {stopping}. Model selection uses {selection_split}.",
+        (
+            f"Early stopping used {len(set(early_stopping_asset_ids))} assets and "
+            f"model selection used {len(set(selection_asset_ids))} assets. "
+            "None of them are in the test split."
+        ),
         "Do not use the test split to choose iterations or the headline model.",
+    )
+
+
+def high_association_finding(
+    rows: Sequence[tuple[Mapping[str, float | None], float]],
+    *,
+    threshold: float,
+) -> LeakageFinding:
+    """Warn when a training feature tracks the target.
+
+    Association is the absolute Pearson correlation on the training rows
+    only. The test split is not an argument. A constant feature is skipped.
+
+    Args:
+        rows: Training ``(features, target)`` pairs, before scaling.
+        threshold: Absolute correlation that warns. The run does not abort.
+
+    Returns:
+        ``WARNING`` at or above the threshold, ``PASS`` when every computed
+        correlation is below it, and ``NOT_CHECKED`` when no correlation
+        can be computed.
+    """
+    if len(rows) < 3:
+        return _finding(
+            LeakageCheckId.HIGH_ASSOCIATION_WITH_LABEL,
+            LeakageStatus.NOT_CHECKED,
+            "Fewer than three training rows, so association was not computed.",
+            "Score association on the training rows once the split has three of them.",
+        )
+    names = sorted({name for features, _label in rows for name in features})
+    scored: list[tuple[float, str]] = []
+    for name in names:
+        coefficient = _pearson(rows, name)
+        if coefficient is None:
+            continue
+        scored.append((abs(coefficient), name))
+    if not scored:
+        return _finding(
+            LeakageCheckId.HIGH_ASSOCIATION_WITH_LABEL,
+            LeakageStatus.NOT_CHECKED,
+            "No training feature had enough variation to correlate with the target.",
+            "Do not treat a constant column as evidence that the target is absent.",
+        )
+    scored.sort(reverse=True)
+    flagged = [(coefficient, name) for coefficient, name in scored if coefficient >= threshold]
+    strongest, strongest_name = scored[0]
+    if not flagged:
+        return _finding(
+            LeakageCheckId.HIGH_ASSOCIATION_WITH_LABEL,
+            LeakageStatus.PASS,
+            (
+                f"The strongest training association is {strongest:.6f} for {strongest_name}, "
+                f"below {threshold}."
+            ),
+            "Keep inspecting features that move with remaining life.",
+        )
+    listed = ", ".join(f"{name} ({coefficient:.6f})" for coefficient, name in flagged[:12])
+    extra = len(flagged) - 12
+    if extra > 0:
+        listed = f"{listed}, and {extra} more"
+    return _finding(
+        LeakageCheckId.HIGH_ASSOCIATION_WITH_LABEL,
+        LeakageStatus.WARNING,
+        (f"{len(flagged)} training features reach absolute correlation {threshold}: {listed}."),
+        "Inspect those features. A column that copies the target is a fail_on leak.",
     )
 
 
@@ -536,6 +630,77 @@ def confirmed_fail_on_ids(
         for finding in findings
         if finding.status is LeakageStatus.CONFIRMED and finding.check_id in blocked
     )
+
+
+def _feature_copies_target(
+    rows: Sequence[tuple[Mapping[str, float | None], float]],
+    feature_name: str,
+) -> bool:
+    """Return whether a feature equals the target on every numeric row.
+
+    Args:
+        rows: Training feature rows and targets.
+        feature_name: Column to compare.
+
+    Returns:
+        True when at least two rows are numeric and each feature equals its target.
+    """
+    pairs: list[tuple[float, float]] = []
+    for features, label in rows:
+        value = features.get(feature_name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        pairs.append((float(value), float(label)))
+    if len(pairs) < 2:
+        return False
+    return all(_close(value, label) for value, label in pairs)
+
+
+def _pearson(
+    rows: Sequence[tuple[Mapping[str, float | None], float]],
+    feature_name: str,
+) -> float | None:
+    """Return the Pearson correlation of one feature with the target.
+
+    Args:
+        rows: Training feature rows and targets.
+        feature_name: Column to correlate.
+
+    Returns:
+        The correlation, or None when fewer than three pairs vary.
+    """
+    pairs: list[tuple[float, float]] = []
+    for features, label in rows:
+        value = features.get(feature_name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if not math.isfinite(float(value)) or not math.isfinite(float(label)):
+            continue
+        pairs.append((float(value), float(label)))
+    if len(pairs) < 3:
+        return None
+    count = float(len(pairs))
+    mean_feature = math.fsum(value for value, _label in pairs) / count
+    mean_label = math.fsum(label for _value, label in pairs) / count
+    feature_square = math.fsum((value - mean_feature) ** 2 for value, _label in pairs)
+    label_square = math.fsum((label - mean_label) ** 2 for _value, label in pairs)
+    if feature_square <= 0.0 or label_square <= 0.0:
+        return None
+    covariance = math.fsum((value - mean_feature) * (label - mean_label) for value, label in pairs)
+    return covariance / math.sqrt(feature_square * label_square)
+
+
+def _close(left: float, right: float) -> bool:
+    """Return whether two finite numbers agree relative to their size.
+
+    Args:
+        left: Feature value.
+        right: Target value.
+
+    Returns:
+        True when the absolute gap is at most one millionth of the larger magnitude.
+    """
+    return abs(left - right) <= 1e-6 * max(1.0, abs(left), abs(right))
 
 
 def _name_and_base(feature_name: str) -> tuple[str, ...]:

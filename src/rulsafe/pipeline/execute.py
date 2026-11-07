@@ -31,6 +31,7 @@ from rulsafe.eval.fd001 import (
     FD001_PROTOCOL_NAME,
     HELD_OUT_ROWS_PROTOCOL_NAME,
     NASA_SCORE_DEFINITION,
+    cap_remaining_life,
     protocol_description,
     read_official_rul,
 )
@@ -53,6 +54,7 @@ from rulsafe.leakage.fail_on import (
     event_metadata_in_features_finding,
     future_in_features_finding,
     future_labels_finding,
+    high_association_finding,
     interpolation_leak_finding,
     official_hidden_label_finding,
     post_event_features_finding,
@@ -147,6 +149,7 @@ def execute_configured_run(
     training_rows = rows_by_split[SplitName.TRAIN]
     if not training_rows:
         raise ContractError("The training split has no completed-trajectory target.")
+    unscaled_training = training_rows
     official_benchmark = config.evaluation.official_benchmark
     official_truths: dict[str, float] = {}
     official_rows: tuple[ScoredRow, ...] = ()
@@ -213,6 +216,8 @@ def execute_configured_run(
         tree=tree,
         seed=config.project.seed,
     )
+    choice_ids = tuple(dict.fromkeys(row.asset_id for row in validation_rows))
+    association_rows = tuple((row.features, row.remaining_life) for row in unscaled_training)
     recorded = _audit_findings(
         config=config,
         episodes=episodes,
@@ -221,11 +226,17 @@ def execute_configured_run(
         censored_ids=censored_ids,
         prepared_windows=prepared.windows,
         official_windows=official_windows,
-        label_checks=prepared.label_checks,
+        label_checks=_observed_label_triples(prepared.rows, tables, config),
         feature_names=prepared.feature_names,
-        fit_asset_ids=tuple(row.asset_id for row in training_rows),
+        fit_asset_ids=preprocessor.fitted_asset_ids,
         labeled_asset_ids=tuple(row.asset_id for row in prepared.rows),
         official_asset_ids=tuple(official_truths),
+        training_used_official_file=_training_targets_match_official_file(
+            unscaled_training, official_truths, config.target.rul_cap
+        ),
+        early_stopping_asset_ids=choice_ids,
+        selection_asset_ids=choice_ids,
+        association_rows=association_rows,
         tree=tree,
     )
     leakage = LeakageSuiteResult(findings=with_documented_coverage(recorded))
@@ -317,26 +328,29 @@ def _assign_split(
         ConfigurationError: The selected protocol block is missing or the
             official id files do not match the completed assets.
     """
-    if config.split.protocol is SplitProtocol.GROUP_HOLDOUT:
-        holdout = config.split.group_holdout
-        if holdout is None:
-            raise ConfigurationError("group_holdout requires its settings block.")
-        return assign_splits(
-            config.split.protocol,
-            group_identifiers=group_identifiers,
-            train_ratio=holdout.train_ratio,
-            validation_ratio=holdout.validation_ratio,
-            test_ratio=holdout.test_ratio,
-            seed=config.project.seed,
+    protocol_name = _stored_name(config.split.protocol)
+    if protocol_name == SplitProtocol.OFFICIAL_PARTITIONS.value:
+        partitions = config.split.official_partitions
+        if partitions is None:
+            raise ConfigurationError("official_partitions requires its id files.")
+        return assign_official_partitions(
+            group_identifiers,
+            train_ids=read_split_ids(Path(partitions.train_ids)),
+            validation_ids=read_split_ids(Path(partitions.validation_ids)),
+            test_ids=read_split_ids(Path(partitions.test_ids)),
         )
-    partitions = config.split.official_partitions
-    if partitions is None:
-        raise ConfigurationError("official_partitions requires its id files.")
-    return assign_official_partitions(
-        group_identifiers,
-        train_ids=read_split_ids(Path(partitions.train_ids)),
-        validation_ids=read_split_ids(Path(partitions.validation_ids)),
-        test_ids=read_split_ids(Path(partitions.test_ids)),
+    holdout = config.split.group_holdout
+    if holdout is None:
+        raise ConfigurationError("group_holdout requires its settings block.")
+    if protocol_name not in {SplitProtocol.GROUP_HOLDOUT.value, "random"}:
+        raise ConfigurationError(f"Unknown split protocol {protocol_name}.")
+    return assign_splits(
+        SplitProtocol.GROUP_HOLDOUT,
+        group_identifiers=group_identifiers,
+        train_ratio=holdout.train_ratio,
+        validation_ratio=holdout.validation_ratio,
+        test_ratio=holdout.test_ratio,
+        seed=config.project.seed,
     )
 
 
@@ -846,23 +860,35 @@ def _audit_findings(
     fit_asset_ids: Sequence[str],
     labeled_asset_ids: Sequence[str],
     official_asset_ids: Sequence[str],
+    training_used_official_file: bool,
+    early_stopping_asset_ids: Sequence[str],
+    selection_asset_ids: Sequence[str],
+    association_rows: Sequence[tuple[Mapping[str, float | None], float]],
     tree: FittedBaseline | None,
 ) -> list[LeakageFinding]:
-    """Run the fail-on checks and the backend-split warning.
+    """Run the fail-on checks, the association warning, and the backend warning.
+
+    The arguments that used to be copied from the same list, or passed as a
+    literal, are computed by the caller from the fitted preprocessor, the
+    event table, and the rows that early stopping and selection actually saw.
 
     Args:
         config: Validated configuration.
         episodes: Classified histories.
-        tables: Loaded tables, used for replacement events.
+        tables: Loaded tables, used for replacement events and history scans.
         split: Asset ids by split.
-        censored_ids: Censored or unsupported assets.
+        censored_ids: Censored or unsupported assets named in the report.
         prepared_windows: Windows for supervised rows.
         official_windows: Windows for the official last observation.
-        label_checks: Supervised label triples.
+        label_checks: ``(prediction time, failure time from the event table, label)``.
         feature_names: Names passed to the model.
-        fit_asset_ids: Assets used to fit the preprocessor.
+        fit_asset_ids: Assets recorded on the fitted preprocessor.
         labeled_asset_ids: Assets that received a supervised label.
         official_asset_ids: Engines named in the official RUL file.
+        training_used_official_file: True when a training label equals that file.
+        early_stopping_asset_ids: Assets whose rows were passed to early stopping.
+        selection_asset_ids: Assets whose validation scores chose the model.
+        association_rows: Unscaled training features and targets.
         tree: Fitted tree, or None.
 
     Returns:
@@ -870,9 +896,9 @@ def _audit_findings(
     """
     windows = tuple(prepared_windows) + tuple(official_windows)
     split_ids = tuple(asset_id for identifiers in split.values() for asset_id in identifiers)
-    stopping = None if tree is None else tree.early_stopping_split
+    competing_ids = _event_ids(tables, config, config.events.competing_types)
     findings = [
-        random_split_finding(config.split.protocol.value),
+        random_split_finding(_stored_name(config.split.protocol)),
         future_labels_finding(label_checks, config.target.rul_cap),
         future_in_features_finding(windows),
         post_event_features_finding(windows),
@@ -880,27 +906,180 @@ def _audit_findings(
             available_at_supplied=config.signals.available_at_column is not None,
             windows=windows,
         ),
-        interpolation_leak_finding(config.signals.gap_policy.value),
+        interpolation_leak_finding(_stored_name(config.signals.gap_policy)),
         entity_leakage_finding(windows),
         scaler_leakage_finding(fit_asset_ids, split[SplitName.TRAIN]),
-        target_in_features_finding(feature_names),
+        target_in_features_finding(feature_names, association_rows),
         event_metadata_in_features_finding(feature_names, config.events.forbidden_as_features),
-        silent_negative_censoring_finding(censored_ids, split_ids, labeled_asset_ids),
-        unsupported_history_finding(censored_ids, censored_ids),
+        silent_negative_censoring_finding(competing_ids, split_ids, labeled_asset_ids),
+        unsupported_history_finding(_ids_requiring_a_report(tables, config), censored_ids),
         replacement_episode_mix_finding(
             _episode_spans(episodes), _replacement_events(tables, config)
         ),
-        choice_split_finding(stopping, "validation"),
+        choice_split_finding(
+            early_stopping_asset_ids,
+            selection_asset_ids,
+            split[SplitName.TEST],
+        ),
         official_hidden_label_finding(
             train_asset_ids=split[SplitName.TRAIN],
             official_asset_ids=official_asset_ids,
-            training_used_official_file=False,
+            training_used_official_file=training_used_official_file,
+        ),
+        high_association_finding(
+            association_rows,
+            threshold=config.leakage.association_warn_threshold,
         ),
     ]
     backend = _backend_split_finding(tree)
     if backend is not None:
         findings.append(backend)
     return findings
+
+
+def _stored_name(value: object) -> str:
+    """Return the value of an enum, or the string that was stored in its place.
+
+    A validated configuration stores an enum. A planted leak can store the
+    raw protocol or gap name without passing schema validation.
+
+    Args:
+        value: Enum or string.
+
+    Returns:
+        The protocol or policy name.
+    """
+    raw = getattr(value, "value", value)
+    return str(raw)
+
+
+def _table_ids(rows: Sequence[Mapping[str, str]], column_name: str) -> set[str]:
+    """Return the non-blank identifiers in one column.
+
+    Args:
+        rows: Loaded table rows.
+        column_name: Identifier header.
+
+    Returns:
+        Stripped identifiers.
+    """
+    return {row.get(column_name, "").strip() for row in rows if row.get(column_name, "").strip()}
+
+
+def _event_ids(
+    tables: LogicalTables, config: RunConfig, event_types: Sequence[str]
+) -> tuple[str, ...]:
+    """Return assets that have one of the named event types.
+
+    Args:
+        tables: Loaded tables.
+        config: Event column names.
+        event_types: Types to keep.
+
+    Returns:
+        Sorted asset ids.
+    """
+    wanted = {event_type.casefold() for event_type in event_types}
+    found: set[str] = set()
+    for row in tables.events.rows:
+        if row.get(config.events.type_column, "").casefold() not in wanted:
+            continue
+        asset_id = row.get(config.events.id_column, "").strip()
+        if asset_id:
+            found.add(asset_id)
+    return tuple(sorted(found))
+
+
+def _ids_requiring_a_report(tables: LogicalTables, config: RunConfig) -> tuple[str, ...]:
+    """Return assets the report must name as censored or unsupported.
+
+    An asset with a terminal failure and no competing close is completed, so
+    it is not in this list. Every other asset that appears in the asset table
+    or the signal table must be named. The scan reads the tables. It does not
+    read the episode list the report is about to write.
+
+    Args:
+        tables: Loaded tables.
+        config: Identifier columns and event types.
+
+    Returns:
+        Sorted asset ids.
+    """
+    present = _table_ids(tables.assets.rows, config.assets.id_column) | _table_ids(
+        tables.signals.rows, config.signals.id_column
+    )
+    terminal = set(_event_ids(tables, config, config.events.terminal_types))
+    competing = set(_event_ids(tables, config, config.events.competing_types))
+    required = [
+        asset_id
+        for asset_id in sorted(present)
+        if asset_id in competing or asset_id not in terminal
+    ]
+    return tuple(required)
+
+
+def _observed_label_triples(
+    rows: Sequence[ScoredRow],
+    tables: LogicalTables,
+    config: RunConfig,
+) -> tuple[tuple[float, float, float], ...]:
+    """Pair each scored label with the failure time read from the event table.
+
+    Args:
+        rows: Supervised rows. Their labels are the values under test.
+        tables: Loaded tables.
+        config: Event columns and terminal types.
+
+    Returns:
+        ``(prediction time, failure time, label)``. A row with no failure
+        event is paired with a time that cannot equal its label.
+    """
+    ends: dict[str, float] = {}
+    wanted = {event_type.casefold() for event_type in config.events.terminal_types}
+    for event_row in tables.events.rows:
+        if event_row.get(config.events.type_column, "").casefold() not in wanted:
+            continue
+        asset_id = event_row.get(config.events.id_column, "").strip()
+        raw_time = event_row.get(config.events.event_time_column, "")
+        if not asset_id or raw_time == "":
+            continue
+        event_time = _number(raw_time)
+        current = ends.get(asset_id)
+        if current is None or event_time < current:
+            ends[asset_id] = event_time
+    triples: list[tuple[float, float, float]] = []
+    for scored in rows:
+        end = ends.get(scored.asset_id)
+        if end is None:
+            end = scored.prediction_time - scored.remaining_life - 1.0
+        triples.append((scored.prediction_time, end, scored.remaining_life))
+    return tuple(triples)
+
+
+def _training_targets_match_official_file(
+    rows: Sequence[ScoredRow],
+    truths: Mapping[str, float],
+    rul_cap: int | None,
+) -> bool:
+    """Return whether a training label equals the official file for that asset.
+
+    Args:
+        rows: Unscaled training rows.
+        truths: Official remaining life by asset id.
+        rul_cap: Piecewise cap, or None.
+
+    Returns:
+        True when a training target matches the capped file value of its asset.
+    """
+    for row in rows:
+        truth = truths.get(row.asset_id)
+        if truth is None:
+            continue
+        expected = cap_remaining_life(truth, rul_cap)
+        scale = max(1.0, abs(expected))
+        if abs(row.remaining_life - expected) <= 1e-6 * scale:
+            return True
+    return False
 
 
 def _episode_spans(episodes: Sequence[Episode]) -> dict[str, tuple[float, float]]:
@@ -1159,7 +1338,7 @@ def _document(
         "hist_gradient_boosting_early_stopping_split": (
             None if tree is None else tree.early_stopping_split
         ),
-        "gap_policy": config.signals.gap_policy.value,
+        "gap_policy": _stored_name(config.signals.gap_policy),
         "rul_cap": rul_cap,
         "feature_names": list(feature_names),
         "preprocessing": {

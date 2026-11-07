@@ -99,7 +99,8 @@ def test_demo_fleet_has_three_assets_in_every_split(repository_root: Path, tmp_p
     }
     for check in DEFAULT_FAIL_ON_CHECKS:
         assert findings[check.value] == "PASS"
-    assert findings["high_association_with_label"] == "NOT_CHECKED"
+    assert findings["high_association_with_label"] == "WARNING"
+    assert document["status"] == "COMPLETED"
     intervals = document["confidence_intervals"]
     assert isinstance(intervals, dict)
     headline = intervals["headline_test"]

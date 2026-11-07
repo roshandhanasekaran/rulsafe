@@ -17,9 +17,9 @@ A confirmed `fail_on` check aborts the run after `report.json` and `report.html`
 
 `random_split`, `future_labels`, `future_in_features`, `post_event_features`, `delayed_record_leak`, `interpolation_leak`, `entity_leakage`, `scaler_leakage` (this id also covers transformer membership), `target_in_features`, `event_metadata_in_features`, `silent_negative_censoring`, `unsupported_history`, `replacement_episode_mix`, `test_used_for_choices`, `official_hidden_label_reconstruction`.
 
-`unsupported_history` is the v0.1 check that a censored or unsupported trajectory was dropped or relabeled without a finding. `censored_policy: reject` stops the run with an error. `report` excludes the history from every split, continues, and names it in the report.
+`target_in_features` matches a target name after case and separators are removed, including `remaining_life`, and it confirms a feature whose training values equal the target. `unsupported_history` is the v0.1 check that a censored or unsupported trajectory was dropped or relabeled without a finding. `censored_policy: reject` stops the run with an error. `report` excludes the history from every split, continues, and names it in the report.
 
-`high_association_with_label` and `backend_internal_split` warn by default.
+`high_association_with_label` warns when the absolute Pearson correlation of a training feature with the target reaches `leakage.association_warn_threshold`. It uses training rows only. `backend_internal_split` warns by default. A confirmed `fail_on` check still aborts after the report is written; a warning does not.
 
 `global_time` and alerts are not v0.1 features. A configuration that asks for either is rejected with an error that says they are deferred to v0.2.
 

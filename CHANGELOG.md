@@ -37,6 +37,7 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - A rejected history's partial report names the offending asset and its signal, event, and prediction row counts.
 - The FD001 headline score is the last observation of each official test engine against `RUL_FD001.txt`. Held-out training engines supply the protocol validation. Per-row scores on those engines stay as a labelled secondary view. `target.rul_cap` defaults to none and is 125 in the C-MAPSS example. The NASA score sums one Saxena 2008 term per engine.
 - Clip percentiles and the standard scaler are fit on the training split. `windows.lookback` adds a causal mean and slope beside the last value. Test RMSE and MAE include a percentile bootstrap over engines. `report.html` is written beside `report.json`. A confirmed `fail_on` check writes that report and then stops.
+- Near-constant columns are centered and not divided by float dust, so the same FD001 run agrees on Python 3.11, 3.12, and 3.13. Target columns match normalized names such as `remaining_life`, and a feature that copies the target is a leak. `high_association_with_label` is the training-row Pearson check.
 
 ### Not in this release
 

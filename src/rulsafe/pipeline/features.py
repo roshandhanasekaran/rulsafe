@@ -5,10 +5,12 @@ is allowed. Linear interpolation is not. A feature at time ``t`` is computed
 only from records whose event time and available time are at or before ``t``.
 """
 
+import math
 from collections.abc import Mapping, Sequence
 
 from rulsafe.contract import GapPolicy
 from rulsafe.exceptions import ConfigurationError
+from rulsafe.pipeline.preprocess import RELATIVE_SCALE_TOLERANCE
 
 
 def build_causal_features(
@@ -197,7 +199,7 @@ def _mean(series: Sequence[tuple[float, float]]) -> float | None:
     """
     if not series:
         return None
-    return sum(value for _, value in series) / len(series)
+    return math.fsum(value for _, value in series) / len(series)
 
 
 def _slope(series: Sequence[tuple[float, float]]) -> float | None:
@@ -208,20 +210,26 @@ def _slope(series: Sequence[tuple[float, float]]) -> float | None:
 
     Returns:
         None when the column has no numeric value. Zero when one point is
-        present or the times do not vary. Otherwise the slope.
+        present, the times do not vary, or the slope is only float dust.
+        Otherwise the slope.
     """
     if not series:
         return None
     if len(series) < 2:
         return 0.0
     count = float(len(series))
-    mean_time = sum(time for time, _ in series) / count
-    mean_value = sum(value for _, value in series) / count
-    variance = sum((time - mean_time) ** 2 for time, _ in series)
-    if variance == 0.0:
+    mean_time = math.fsum(time for time, _ in series) / count
+    mean_value = math.fsum(value for _, value in series) / count
+    variance = math.fsum((time - mean_time) ** 2 for time, _ in series)
+    if variance <= 0.0:
         return 0.0
-    covariance = sum((time - mean_time) * (value - mean_value) for time, value in series)
-    return covariance / variance
+    covariance = math.fsum((time - mean_time) * (value - mean_value) for time, value in series)
+    slope = covariance / variance
+    time_span = max(time for time, _ in series) - min(time for time, _ in series)
+    value_scale = max(1.0, abs(mean_value))
+    if abs(slope) * max(time_span, 1.0) <= RELATIVE_SCALE_TOLERANCE * value_scale:
+        return 0.0
+    return slope
 
 
 def _required_time(row: Mapping[str, object], key: str) -> float:
