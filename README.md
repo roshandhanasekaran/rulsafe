@@ -108,7 +108,7 @@ MetricValue.computed(12.5).to_json()
 - **Features.** At time `t`, a feature uses only records knowable at `t`. The default gap policy is `none`. Bounded forward fill is allowed. Linear interpolation is rejected.
 - **Preprocessing.** Clip bounds and scalers fit on the training split only, with a membership record.
 - **Baselines.** A training constant, and one histogram gradient boosting model. Persistence is rejected. Age and logistic regression are not in v0.1.
-- **Censored histories.** `censored_policy` is `reject` or `report`. `drop` and `unknown_policy: exclude_from_loss` are errors.
+- **Censored histories.** `censored_policy` is `reject` or `report`. Either way the history is excluded from training and named in the report. `drop` and `unknown_policy: exclude_from_loss` are errors.
 - **Audit.** Statuses are `CONFIRMED`, `WARNING`, `NOT_CHECKED`, and `PASS`. A check with no finding is reported as `NOT_CHECKED`, not as a pass. A metric with no number serialises as `{"value": null, "status": "NOT_COMPUTED"}` or `{"value": null, "status": "DISABLED"}`. It is not stored as zero.
 - **Not in v0.1.** `global_time` and `alerts` are rejected with an error that they are deferred to v0.2. They are not dropped silently.
 
@@ -145,12 +145,15 @@ Neither package is this audit. v0.1's leftover is causal windows, a named train 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The short path:
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
+python -m pip install --no-deps --no-build-isolation -e .
 pre-commit install
 pre-commit run --all-files
 ruff check .
 mypy src
 pytest
 ```
+
+Use the lock whose name matches the interpreter (`dev-3.10.lock` through `dev-3.13.lock`). The supply-chain notes are in [ADR-010](docs/decisions/ADR-010-security-supply-chain.md).
 
 Licence: Apache-2.0. Dataset licences stay with the dataset owners. The wheel does not contain third-party data files.

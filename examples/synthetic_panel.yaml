@@ -1,5 +1,5 @@
 # Synthetic completed-trajectory panel.
-# engine_e is censored and must be reported, not dropped.
+# engine_e is censored. It is reported and excluded from train, validation, and test.
 # engine_a has one delayed temperature that is not knowable at time 0.
 
 project:

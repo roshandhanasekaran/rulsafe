@@ -18,8 +18,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Install from the audited lockfile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Ruff
         run: ruff check .
       - name: Ruff format
@@ -39,8 +42,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Install gitleaks
+        run: bash scripts/install-gitleaks.sh
+      - name: Install from the audited lockfile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-${{ matrix.python-version }}.lock
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Pytest
         run: pytest
 
@@ -54,27 +62,52 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
-      - name: Bandit
-        run: bandit -c pyproject.toml -r src
-      - name: Gitleaks full history
+      - name: Install from the audited lockfile
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" | tar -xz gitleaks
-          ./gitleaks detect --source . --log-opts="--all" --redact --verbose
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Bandit
+        run: bandit -c .bandit -r src
+      - name: Install gitleaks
+        run: bash scripts/install-gitleaks.sh
+      - name: Gitleaks full history
+        run: gitleaks detect --source . --log-opts=--all --redact --verbose --no-banner
 
   audit-lockfile:
-    name: Audit project lockfile
+    name: Audit lock on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install pip-audit
-        run: python -m pip install --upgrade pip "pip-audit>=2.10.1,<3"
-      - name: Audit requirements/dev.lock only
-        run: pip-audit --requirement requirements/dev.lock --disable-pip --no-deps --progress-spinner=off
+          python-version: ${{ matrix.python-version }}
+      - name: Install from the audited lockfile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-${{ matrix.python-version }}.lock
+      - name: Audit the lock for this interpreter
+        run: |
+          set -euo pipefail
+          args=(
+            --requirement "requirements/dev-${{ matrix.python-version }}.lock"
+            --disable-pip
+            --require-hashes
+            --progress-spinner=off
+          )
+          if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
+            while read -r vuln_id; do
+              case "${vuln_id}" in
+                ""|\#*) continue ;;
+              esac
+              args+=(--ignore-vuln "${vuln_id}")
+            done < requirements/filelock-unfixed-on-3.10.txt
+          fi
+          pip-audit "${args[@]}"
 
   build:
     name: Build wheel
@@ -84,10 +117,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Install from the audited lockfile
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
+          python -m pip install --no-deps --no-build-isolation -e .
       - name: Build
-        run: python -m build
+        run: python -m build --no-isolation
       - name: Check the wheel has no dataset files
         run: |
           python - <<'PY'

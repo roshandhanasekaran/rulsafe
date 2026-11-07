@@ -4,14 +4,19 @@ RULSafe v0.1 is a completed-trajectory remaining-useful-life toolkit. SCANIA and
 
 ## Setup
 
-Use Python 3.10 or newer. Continuous integration runs 3.10, 3.11, 3.12, and 3.13.
+Use Python 3.10, 3.11, 3.12, or 3.13. Continuous integration installs the hashed lock for that same interpreter.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install --upgrade pip
+python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
+python -m pip install --no-deps --no-build-isolation -e .
+bash scripts/install-gitleaks.sh
 pre-commit install
 ```
+
+Replace `dev-3.12.lock` with `dev-3.10.lock`, `dev-3.11.lock`, or `dev-3.13.lock` when that is the interpreter in the virtualenv. The 3.10 lock pins `filelock==4.1.0` because the patched 4.2 releases require Python 3.11. Those advisories are listed in `requirements/filelock-unfixed-on-3.10.txt` and are ignored only when that lock is audited.
 
 Before a pull request:
 
@@ -67,12 +72,16 @@ Schema and command-line tests live in `tests/unit/`. Planted leakage fixtures an
 
 A leakage check that did not run is `NOT_CHECKED`, not a pass. Do not add `global_time` or alerts in v0.1; both are deferred to v0.2 and the schema must reject them with that reason.
 
-Regenerate `requirements/dev.lock` in a clean Python 3.12 virtualenv after a dependency change. 3.12 is the interpreter used for that file because the patched `filelock` releases require Python 3.11 or newer. `Jinja2` stays on 3.1.6, which is the lower bound in `pyproject.toml`.
+Regenerate every hashed lock after a dependency change. `uv pip compile --python-version` resolves for that interpreter, and `--generate-hashes` records the artefact hashes. Repeat the command for 3.10, 3.11, 3.12, and 3.13. `Jinja2` stays on 3.1.6, which is the lower bound in `pyproject.toml`. Hypothesis is capped below 6.169 so the 3.10 resolution still succeeds. The build backend is pinned to `hatchling==1.33.0`.
 
 ```bash
-python3.12 -m venv /tmp/rulsafe-lock
-/tmp/rulsafe-lock/bin/python -m pip install pip-tools
-/tmp/rulsafe-lock/bin/pip-compile --extra=dev --extra=demo --strip-extras --output-file=requirements/dev.lock pyproject.toml
+uv pip compile pyproject.toml \
+  --python-version 3.12 \
+  --generate-hashes \
+  --extra dev \
+  --extra demo \
+  --no-strip-markers \
+  --output-file requirements/dev-3.12.lock
 ```
 
-Continuous integration audits that lockfile only (`pip-audit --requirement requirements/dev.lock --disable-pip --no-deps`), not the machine's other packages. Hypothesis is capped below 6.169 so the same dev extra still installs on Python 3.10.
+Continuous integration audits the lock for the job's interpreter (`pip-audit --requirement requirements/dev-<version>.lock --disable-pip --require-hashes`), not the machine's other packages. Tests that need a download are marked `network` and stay out of the default run. `pytest -m network` opts in. A missing local scanner fails its planted-violation test. It is not skipped.

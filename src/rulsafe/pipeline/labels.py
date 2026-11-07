@@ -38,8 +38,9 @@ def disposition_for_history(
 
     Completed trajectories are trainable. Official C-MAPSS test endings are
     scored at the last observation. Every other history follows
-    ``censored_policy``: ``reject`` aborts the run and ``report`` keeps an
-    audit row. Neither path removes the history quietly.
+    ``censored_policy``. ``reject`` and ``report`` both leave the history out
+    of training. ``reject`` records an exclusion. ``report`` records the same
+    exclusion and keeps the history visible. Neither path removes it quietly.
 
     Args:
         support: What kind of history this is.

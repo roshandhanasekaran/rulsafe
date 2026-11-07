@@ -23,8 +23,10 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 
 - `global_time` and alerts are rejected. The error says both are deferred to v0.2.
 - Bandit B105 is not skipped globally. The leakage status `PASS` carries a targeted `# nosec B105`.
-- Dependency audit uses `requirements/dev.lock`, resolved from the project extras in a clean virtualenv.
+- Dependency audit uses one hashed lock per Python version, `requirements/dev-3.10.lock` through `requirements/dev-3.13.lock`. CI installs that file with `--require-hashes`.
+- The build backend is pinned to `hatchling==1.33.0`.
 - Gitleaks in CI scans the full git history.
+- A censored or unsupported history is excluded from train, validation, and test. `censored_policy: reject` records that exclusion in the report.
 
 ### Not in this release
 

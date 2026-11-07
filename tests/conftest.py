@@ -6,6 +6,22 @@ import pytest
 import yaml
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Leave network tests unselected unless the run opts in.
+
+    Args:
+        config: Active pytest configuration.
+        items: Collected test items.
+    """
+    markexpr = config.getoption("markexpr")
+    if "network" in str(markexpr):
+        return
+    reason = "network tests are opt-in; run pytest -m network"
+    for item in items:
+        if item.get_closest_marker("network") is not None:
+            item.add_marker(pytest.mark.skip(reason=reason))
+
+
 @pytest.fixture
 def repository_root() -> Path:
     """Return the repository root."""

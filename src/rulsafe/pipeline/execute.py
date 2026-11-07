@@ -1,8 +1,8 @@
 """Run a completed-trajectory check for group holdout and CSV inputs.
 
 The histogram gradient boosting baseline is recorded as ``NOT_COMPUTED``.
-The constant baseline is fit on training targets only. Censored and
-unsupported assets stay in the report.
+The constant baseline is fit on training targets only. A censored or
+unsupported history is rejected or reported and is not placed in a split.
 """
 
 import json
@@ -21,7 +21,12 @@ from rulsafe.mapping import LogicalTables
 from rulsafe.models.baselines import FittedBaseline, fit_constant_baseline
 from rulsafe.pipeline.episodes import Episode, build_episodes
 from rulsafe.pipeline.features import build_causal_features
-from rulsafe.pipeline.labels import HistorySupport, assign_remaining_life
+from rulsafe.pipeline.labels import (
+    HistoryDisposition,
+    HistorySupport,
+    assign_remaining_life,
+    disposition_for_history,
+)
 from rulsafe.pipeline.split import SplitName, assign_splits
 from rulsafe.report.json import MetricValue
 
@@ -44,7 +49,6 @@ def execute_group_holdout(
 
     Raises:
         ConfigurationError: The files or the protocol cannot be used for this slice.
-        ContractError: A censored history was configured to be rejected.
     """
     holdout = config.split.group_holdout
     if config.split.protocol is not SplitProtocol.GROUP_HOLDOUT or holdout is None:
@@ -58,10 +62,11 @@ def execute_group_holdout(
         events=load_table(Path(config.connector.events), LogicalTableRole.EVENTS),
     )
     episodes = build_episodes(tables, config)
-    labeled = _labeled_rows(episodes, config)
+    supervised, excluded = _separate_training_histories(episodes, config)
+    labeled = _labeled_rows(supervised, config)
     split = assign_splits(
         config.split.protocol,
-        group_identifiers=tuple(episode.asset_id for episode in episodes),
+        group_identifiers=tuple(episode.asset_id for episode in supervised),
         train_ratio=holdout.train_ratio,
         validation_ratio=holdout.validation_ratio,
         test_ratio=holdout.test_ratio,
@@ -87,12 +92,46 @@ def execute_group_holdout(
         )
     )
     leakage = LeakageSuiteResult(findings=findings)
-    document = _document(config, episodes, split, censored_ids, leakage, metrics, constant)
+    document = _document(
+        config,
+        episodes,
+        split,
+        censored_ids,
+        excluded,
+        leakage,
+        metrics,
+        constant,
+    )
     output_directory.mkdir(parents=True, exist_ok=True)
     report_path = output_directory / "report.json"
     document["report_json"] = str(report_path)
     report_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     return leakage, metrics, document
+
+
+def _separate_training_histories(
+    episodes: Sequence[Episode],
+    config: RunConfig,
+) -> tuple[tuple[Episode, ...], tuple[tuple[Episode, HistoryDisposition], ...]]:
+    """Keep censored and unsupported histories out of every split.
+
+    Args:
+        episodes: Classified asset histories.
+        config: Label policy.
+
+    Returns:
+        Histories that may be split and fit, then histories that are only
+        rejected or reported.
+    """
+    supervised: list[Episode] = []
+    excluded: list[tuple[Episode, HistoryDisposition]] = []
+    for episode in episodes:
+        disposition = disposition_for_history(episode.support, config.labeling.censored_policy)
+        if disposition in {HistoryDisposition.REJECT, HistoryDisposition.REPORT}:
+            excluded.append((episode, disposition))
+        else:
+            supervised.append(episode)
+    return tuple(supervised), tuple(excluded)
 
 
 def _labeled_rows(episodes: Sequence[Episode], config: RunConfig) -> list[dict[str, object]]:
@@ -234,7 +273,10 @@ def _unsupported_history_finding(censored_ids: tuple[str, ...]) -> LeakageFindin
     """
     if censored_ids:
         listed = ", ".join(censored_ids)
-        evidence = f"Censored or unsupported assets were kept in the report: {listed}."
+        evidence = (
+            "Censored or unsupported assets were excluded from training "
+            f"and listed in the report: {listed}."
+        )
     else:
         evidence = "No censored or unsupported assets were present."
     return LeakageFinding(
@@ -335,11 +377,32 @@ def _number(value: object) -> float:
         raise ConfigurationError(f"Expected a number, got {value!r}.") from error
 
 
+def _exclusion_detail(disposition: HistoryDisposition) -> str:
+    """Describe why a history was kept out of training.
+
+    Args:
+        disposition: ``reject`` or ``report``.
+
+    Returns:
+        A sentence for the report entry.
+    """
+    if disposition is HistoryDisposition.REJECT:
+        return (
+            "Rejected and excluded from training. "
+            "A censored or unsupported history is not a training row."
+        )
+    return (
+        "Reported and excluded from training. "
+        "A censored or unsupported history is not a training row."
+    )
+
+
 def _document(
     config: RunConfig,
     episodes: Sequence[Episode],
     split: Mapping[SplitName, tuple[str, ...]],
     censored_ids: tuple[str, ...],
+    excluded: Sequence[tuple[Episode, HistoryDisposition]],
     leakage: LeakageSuiteResult,
     metrics: MetricsReport,
     constant: FittedBaseline,
@@ -349,8 +412,9 @@ def _document(
     Args:
         config: Validated configuration.
         episodes: Classified histories.
-        split: Asset ids by split.
+        split: Asset ids by split. Censored and unsupported ids are absent.
         censored_ids: Assets that were not scored.
+        excluded: Histories left out of every split, with their disposition.
         leakage: Audit rows, including documented coverage.
         metrics: Validation and test metrics.
         constant: Training-only constant model.
@@ -367,6 +431,16 @@ def _document(
         "asset_count": len(episodes),
         "censored_or_unsupported_asset_ids": list(censored_ids),
         "dropped_asset_ids": [],
+        "history_dispositions": [
+            {
+                "asset_id": episode.asset_id,
+                "support": episode.support.value,
+                "disposition": disposition.value,
+                "used_for_training": False,
+                "detail": _exclusion_detail(disposition),
+            }
+            for episode, disposition in excluded
+        ],
         "splits": {name.value: list(identifiers) for name, identifiers in split.items()},
         "constant_training_value": constant.constant_value,
         "constant_training_row_count": constant.training_row_count,
