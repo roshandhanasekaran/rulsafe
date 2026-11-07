@@ -7,7 +7,7 @@ a report. Censored fleet tasks are rejected instead of being silently ignored.
 
 import math
 from collections.abc import Mapping, Sequence
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -34,7 +34,7 @@ from rulsafe.exceptions import ConfigurationError
 from rulsafe.models.forbid_persistence import reject_persistence_baseline
 
 
-class SplitProtocol(str, Enum):
+class SplitProtocol(StrEnum):
     """Named way to build train, validation, and final test.
 
     ``global_time`` is deferred to v0.2 and is rejected rather than ignored.
@@ -44,7 +44,7 @@ class SplitProtocol(str, Enum):
     GROUP_HOLDOUT = "group_holdout"
 
 
-class LabelTask(str, Enum):
+class LabelTask(StrEnum):
     """v0.1 prediction question.
 
     ``completed_trajectory_rul`` is remaining useful life on a trajectory that
@@ -57,7 +57,7 @@ class LabelTask(str, Enum):
     CMAPSS_LAST_OBSERVATION = "cmapss_last_observation"
 
 
-class TimeUnit(str, Enum):
+class TimeUnit(StrEnum):
     """Unit of ``labeling.horizon`` and alert lead time."""
 
     HOURS = "hours"
@@ -66,7 +66,7 @@ class TimeUnit(str, Enum):
     STEPS = "steps"
 
 
-class CensoredHistoryPolicy(str, Enum):
+class CensoredHistoryPolicy(StrEnum):
     """What v0.1 does with a censored or unsupported history.
 
     Histories are never removed without a finding. ``reject`` stops the run.
@@ -77,7 +77,7 @@ class CensoredHistoryPolicy(str, Enum):
     REPORT = "report"
 
 
-class ScalerName(str, Enum):
+class ScalerName(StrEnum):
     """Train-only scaler. Fitting it on another split is leakage."""
 
     NONE = "none"
@@ -85,14 +85,14 @@ class ScalerName(str, Enum):
     MINMAX = "minmax"
 
 
-class BaselineName(str, Enum):
+class BaselineName(StrEnum):
     """v0.1 baselines. Persistence, age, and logistic regression are not members."""
 
     CONSTANT = "constant"
     HIST_GRADIENT_BOOSTING = "hist_gradient_boosting"
 
 
-class LeakageStatus(str, Enum):
+class LeakageStatus(StrEnum):
     """Outcome of one leakage check.
 
     A report must not collapse these into a global "no leakage" claim.
@@ -105,7 +105,7 @@ class LeakageStatus(str, Enum):
     PASS = "PASS"  # noqa: S105  # nosec B105
 
 
-class LeakageCheckId(str, Enum):
+class LeakageCheckId(StrEnum):
     """Identifier of a leakage check.
 
     ``scaler_leakage`` also covers the transformer membership manifest.
@@ -132,7 +132,7 @@ class LeakageCheckId(str, Enum):
     BACKEND_INTERNAL_SPLIT = "backend_internal_split"
 
 
-class SplitReportName(str, Enum):
+class SplitReportName(StrEnum):
     """A split that can appear in the report."""
 
     TRAIN = "train"
@@ -140,7 +140,7 @@ class SplitReportName(str, Enum):
     TEST = "test"
 
 
-class PlotName(str, Enum):
+class PlotName(StrEnum):
     """A plot the report will include once plotting exists.
 
     The first three are the v0.1 completed-trajectory plots. Alert plots are
@@ -155,7 +155,7 @@ class PlotName(str, Enum):
     LABEL_COUNTS = "label_counts"
 
 
-class ReportFormat(str, Enum):
+class ReportFormat(StrEnum):
     """An output file format. HTML and JSON are required together."""
 
     HTML = "html"
@@ -900,6 +900,11 @@ class GroupHoldoutConfig(StrictConfigModel):
         return self
 
 
+# One-asset validation and test splits are warned, not treated as a full holdout.
+# The synthetic demo has one asset in each of those splits, so it records this warning.
+DEFAULT_MIN_ASSETS_PER_SPLIT = 3
+
+
 class SplitConfig(StrictConfigModel):
     """Which named protocol builds the three splits.
 
@@ -910,11 +915,17 @@ class SplitConfig(StrictConfigModel):
         protocol: Named split protocol.
         official_partitions: Id files for ``official_partitions``.
         group_holdout: Ratios for ``group_holdout``.
+        min_assets_per_split: Smallest split that is not listed in report
+            ``risks``. The default of 3 applies to train, validation, and test.
+            A validation or test split with fewer assets still receives scores
+            when it has rows. An empty split is ``NOT_COMPUTED`` and the risk
+            says so.
     """
 
     protocol: Annotated[SplitProtocol, BeforeValidator(_parse_protocol_value)]
     official_partitions: OfficialPartitionsConfig | None = None
     group_holdout: GroupHoldoutConfig | None = None
+    min_assets_per_split: Annotated[int, Field(ge=1)] = DEFAULT_MIN_ASSETS_PER_SPLIT
 
     @model_validator(mode="before")
     @classmethod

@@ -163,11 +163,13 @@ def load_config(path: str | Path) -> RunConfig:
 def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> RunResult:
     """Run the implemented completed-trajectory check.
 
-    Group holdout on CSV files is implemented. The constant baseline is fit
-    on training targets only. The tree baseline is reported as not computed.
-    ``censored_policy`` ``report`` keeps censored histories in the JSON report
-    and out of every split. ``reject`` stops the run with an error.
-    Official partitions, Parquet, and the C-MAPSS demo are not implemented yet.
+    Group holdout on CSV files is implemented. The constant baseline and the
+    histogram gradient boosting baseline are fit on training rows only. Early
+    stopping uses the validation split. ``censored_policy`` ``report`` keeps
+    censored histories in the JSON report and out of every split. ``reject``
+    writes a partial report with status ``FAILED`` and no metrics, then raises.
+    Official partitions and the C-MAPSS demo need offline files that this
+    package does not download.
 
     Args:
         config: Validated run configuration.
@@ -180,7 +182,8 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
     Raises:
         ConfigurationError: The files or protocol are outside this slice.
         ContractError: ``censored_policy`` is ``reject`` and a censored or
-            unsupported history is present, or the training split has no target.
+            unsupported history is present. The partial report is written
+            before this exception, or the training split has no target.
     """
     from rulsafe.pipeline.execute import execute_group_holdout
 

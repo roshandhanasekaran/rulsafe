@@ -1,7 +1,8 @@
 # Synthetic completed-trajectory panel.
 # engine_e is censored. censored_policy report excludes it from every split and
-# continues. engine_a through engine_d, engine_f, and engine_g run to failure
-# so train, validation, and test each receive at least one completed asset.
+# continues. engine_a through engine_d, engine_f, and engine_g run to failure,
+# so every split is non-empty. min_assets_per_split defaults to 3, so the
+# one-asset validation and test splits are warnings. Their scores are computed.
 # engine_a has one delayed temperature that is not knowable at time 0.
 
 project:

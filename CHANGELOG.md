@@ -12,12 +12,12 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Dataset cards for C-MAPSS FD001 (v0.1 demo; NASA catalogue licence not specified; Zenodo CC BY 4.0 kept separate) and SCANIA Component X (v0.2, CC BY 4.0, 105 signal columns).
 - Audit helpers that record a missing check as `NOT_CHECKED` rather than a pass.
 - Report metrics serialise as `{"value": null, "status": "DISABLED"}` or `{"value": null, "status": "NOT_COMPUTED"}` when they have no number. A computed metric uses the same keys with a finite value and `"COMPUTED"`.
-- Command-line commands for the later pipeline. `validate` and `datasets list` work. `demo cmapss` is reserved and not implemented.
+- Command-line commands for the later pipeline. `validate` and `datasets list` work. `demo cmapss` does not download FD001.
 - Ruff, mypy, pytest, pre-commit, bandit, gitleaks, and pip-audit wiring.
 
 ### Added
 
-- `rulsafe demo synthetic` runs the CSV group-holdout slice. Causal features ignore later rows. The censored asset stays in `report.json`. The constant baseline uses training targets only. The tree metric is `NOT_COMPUTED`.
+- `rulsafe demo synthetic` runs the CSV group-holdout slice. Causal features ignore later rows. The censored asset stays in `report.json`. The constant and histogram gradient boosting baselines use training rows only. Early stopping uses validation. Root-mean-square error, mean absolute error, and the NASA score are reported. The NASA score is not a gate.
 
 ### Changed
 
@@ -27,9 +27,11 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Python 3.10 is not supported. `requires-python` is `>=3.11`. The 3.10 lock and the filelock ignore list are removed.
 - The build backend is pinned to `hatchling==1.33.0`.
 - Gitleaks in CI scans the full git history.
-- `censored_policy: reject` stops the run with an error. `censored_policy: report` excludes the history from every split, continues, and names it in the report.
-- An empty split, or a split below the minimum of one asset, is a warning in the report `risks`. The synthetic demo has a completed asset in train, validation, and test.
+- `censored_policy: reject` writes a partial report with status `FAILED`, lists the contract violations, omits metrics, and then raises. `censored_policy: report` excludes the history from every split, continues, and names it in the report.
+- `min_assets_per_split` defaults to 3. A smaller split is a warning in `risks`. The synthetic demo's one-asset validation and test splits warn, and their scores stay `COMPUTED`. An empty split is `NOT_COMPUTED` with that reason in `risks`.
+- Ruff's `target-version` is `py311`.
+- `scikit-learn` is a runtime dependency. The hashed locks for Python 3.11, 3.12, and 3.13 include it.
 
 ### Not in this release
 
-- Windowing, labeling, splits, model fitting, C-MAPSS scoring, HTML or JSON reports, and dataset downloads.
+- Official C-MAPSS partition scoring, HTML reports, and dataset downloads. `rulsafe demo cmapss` does not download FD001.

@@ -13,7 +13,7 @@ same keys with a finite number and ``"status": "COMPUTED"``.
 import json
 import math
 from collections.abc import Mapping
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -22,7 +22,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 from rulsafe.exceptions import not_implemented
 
 
-class MetricComputationStatus(str, Enum):
+class MetricComputationStatus(StrEnum):
     """Whether a report metric has a number.
 
     ``DISABLED`` means the run was not asked to compute it.

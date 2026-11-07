@@ -1,5 +1,6 @@
 """Command-line skeleton: help, version, schema validation, and explicit refusals."""
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -45,7 +46,8 @@ def test_validate_accepts_cmapss_and_rejects_scania(repository_root: Path) -> No
 def test_demo_cmapss_is_not_implemented_and_scania_is_refused() -> None:
     cmapss = runner.invoke(app, ["demo", "cmapss"])
     assert cmapss.exit_code == 2
-    assert "not implemented" in cmapss.stdout.lower()
+    assert "not downloaded" in cmapss.stdout.lower()
+    assert "not computed" in cmapss.stdout.lower()
 
     scania = runner.invoke(app, ["demo", "scania"])
     assert scania.exit_code == 2
@@ -71,12 +73,23 @@ def test_dataset_list_and_fetch_keep_licences_separate() -> None:
     assert "not implemented" in cmapss_fetch.stdout.lower()
 
 
+def test_cached_cmapss_files_are_not_the_synthetic_slice(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Path, "is_file", lambda _self: True)
+    result = runner.invoke(app, ["demo", "cmapss"])
+    assert result.exit_code == 2
+    assert "not implemented" in result.stdout.lower()
+
+
 def test_demo_synthetic_writes_the_censored_asset(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["demo", "synthetic", "--output", str(tmp_path)])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        result = runner.invoke(app, ["demo", "synthetic", "--output", str(tmp_path)])
     assert result.exit_code == 0
     report = (tmp_path / "report.json").read_text(encoding="utf-8")
     assert "engine_e" in report
-    assert "NOT_COMPUTED" in report
+    assert "COMPUTED" in report
+    assert "hist_gradient_boosting_root_mean_square_error" in report
+    assert "below the minimum of 3" in report
 
 
 def test_unknown_demo_and_dataset_are_usage_errors() -> None:

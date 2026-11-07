@@ -5,7 +5,7 @@ These types describe the contract. They do not read files or build windows.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from rulsafe.exceptions import ConfigurationError
@@ -13,7 +13,7 @@ from rulsafe.exceptions import ConfigurationError
 SUPPORTED_TABLE_SUFFIXES: tuple[str, ...] = (".csv", ".parquet")
 
 
-class LogicalTableRole(str, Enum):
+class LogicalTableRole(StrEnum):
     """One of the three logical tables every run maps files onto."""
 
     ASSETS = "assets"
@@ -21,7 +21,7 @@ class LogicalTableRole(str, Enum):
     EVENTS = "events"
 
 
-class TimeField(str, Enum):
+class TimeField(StrEnum):
     """A time column in the data contract."""
 
     EVENT_TIME = "event_time"
@@ -30,7 +30,7 @@ class TimeField(str, Enum):
     OBSERVATION_END = "observation_end"
 
 
-class TimestampType(str, Enum):
+class TimestampType(StrEnum):
     """Unit in which time columns are compared."""
 
     DATETIME = "datetime"
@@ -38,7 +38,7 @@ class TimestampType(str, Enum):
     INTEGER_STEP = "integer_step"
 
 
-class GapPolicy(str, Enum):
+class GapPolicy(StrEnum):
     """How missing signal values are treated.
 
     Linear interpolation is intentionally absent. Filling a time from a later

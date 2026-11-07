@@ -152,12 +152,14 @@ def test_split_size_risks_name_an_empty_split_and_a_short_split() -> None:
             SplitName.TRAIN: ("engine_a",),
             SplitName.VALIDATION: (),
             SplitName.TEST: (),
-        }
+        },
+        minimum=1,
     )
     assert [risk["code"] for risk in empty] == ["empty_split", "empty_split"]
     assert empty[0]["split"] == "validation"
     assert empty[0]["severity"] == "warning"
     assert "empty" in str(empty[0]["message"])
+    assert "NOT_COMPUTED" in str(empty[0]["message"])
     assert empty[0]["asset_count"] == 0
 
     short = split_size_risks(
@@ -178,7 +180,8 @@ def test_split_size_risks_name_an_empty_split_and_a_short_split() -> None:
                 SplitName.TRAIN: ("engine_a",),
                 SplitName.VALIDATION: ("engine_b",),
                 SplitName.TEST: ("engine_c",),
-            }
+            },
+            minimum=1,
         )
         == []
     )

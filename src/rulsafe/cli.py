@@ -190,7 +190,12 @@ def demo_command(
         typer.Option("--output", help="Directory for the report."),
     ] = None,
 ) -> None:
-    """Run a demo. ``cmapss`` uses C-MAPSS FD001 plus the synthetic fixtures."""
+    """Run a demo.
+
+    ``synthetic`` fits the constant and tree baselines. ``cmapss`` scores
+    FD001 only when the offline files named in the example config are already
+    on disk. Those files are not downloaded.
+    """
     normalized = fixture_name.strip().casefold()
     if normalized in _SCANIA_DEMO_NAMES:
         console.print(
@@ -201,7 +206,7 @@ def demo_command(
         console.print("Unknown demo. Choose cmapss or synthetic.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
     if normalized == "cmapss":
-        _exit_not_implemented("demo", normalized, output)
+        _exit_cmapss_without_cached_files()
     from rulsafe.api import run_pipeline
 
     destination = output if output is not None else Path("rulsafe-runs") / "synthetic"
@@ -247,6 +252,36 @@ def fetch_dataset_command(
     except NotImplementedError as error:
         console.print(str(error))
         raise typer.Exit(code=EXIT_USAGE_ERROR) from error
+
+
+def _exit_cmapss_without_cached_files() -> None:
+    """Stop the C-MAPSS demo when the offline FD001 files are not on disk.
+
+    The package does not download C-MAPSS. Without those files the tree
+    metrics for this demo are not computed.
+
+    Raises:
+        typer.Exit: Always, with code 2, after naming the missing paths.
+    """
+    from rulsafe.api import load_config
+
+    config = load_config(Path("examples") / "cmapss_fd001_completed_trajectory.yaml")
+    paths = [config.connector.assets, config.connector.signals, config.connector.events]
+    partitions = config.split.official_partitions
+    if partitions is not None:
+        paths.extend([partitions.train_ids, partitions.validation_ids, partitions.test_ids])
+    missing = [path.as_posix() for path in paths if not path.is_file()]
+    if not missing:
+        _exit_not_implemented("demo", "cmapss")
+    console.print(
+        "C-MAPSS FD001 is not in this checkout and is not downloaded. "
+        "The NASA catalog licence is not specified. "
+        "Place the offline files listed in examples/cmapss_fd001_completed_trajectory.yaml "
+        "and rerun. Without those files the histogram gradient boosting metrics "
+        "for this demo are not computed."
+    )
+    console.print("Missing: " + ", ".join(missing))
+    raise typer.Exit(code=EXIT_USAGE_ERROR)
 
 
 def main() -> None:

@@ -60,7 +60,7 @@ Bug reports and feature requests use the templates in `.github/ISSUE_TEMPLATE/`.
 - Ruff also runs formatting, isort, pep8-naming, pyupgrade, bugbear, simplify, and the bandit-style `S` rules.
 - `mypy` is strict on `src/`. The package ships `py.typed`.
 - Prefer small functions with full words in Python names (`output_directory`, not `out_dir`). Configuration field names stay as the YAML contract writes them (`output_dir`, `id_column`, `gap_policy: ffill`), because those keys are the file format.
-- Do not drop a censored or unsupported history quietly. `censored_policy: reject` stops the run with an error. `report` excludes the history from every split, continues, and records it.
+- Do not drop a censored or unsupported history quietly. `censored_policy: reject` writes a partial report with status `FAILED` and no metrics, then stops the run. `report` excludes the history from every split, continues, and records it.
 - Do not invent dataset licences. C-MAPSS on the NASA catalog is "not specified". The Zenodo CC BY 4.0 statement stays on its own line. SCANIA is CC BY 4.0 and is not re-licensed as Apache-2.0.
 - Do not put third-party dataset files, access keys, or secrets in the repository.
 

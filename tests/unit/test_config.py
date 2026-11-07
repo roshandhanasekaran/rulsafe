@@ -16,6 +16,7 @@ def test_completed_trajectory_examples_load(load_example) -> None:
 
     assert synthetic.labeling.task.value == "completed_trajectory_rul"
     assert synthetic.labeling.censored_policy.value == "report"
+    assert synthetic.split.min_assets_per_split == 3
     assert synthetic.signals.gap_policy is GapPolicy.NONE
     assert tuple(synthetic.models.include) == tuple(cmapss.models.include)
     assert [model.value for model in synthetic.models.include] == [

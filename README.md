@@ -31,13 +31,13 @@ rulsafe datasets list
 
 `rulsafe validate` checks the YAML contract only. It does not open the data files.
 
-Run the synthetic completed-trajectory demo from the repository root. It writes `report.json`. `engine_e` is censored: the demo uses `censored_policy: report`, so that engine is named in the report and is not in train, validation, or test. The other engines are completed, and each of those splits is non-empty. The constant baseline is fit on the training split only and scored on validation and test. The tree baseline is `NOT_COMPUTED`. An empty or undersized split is a warning in `risks`, not a silent `NOT_COMPUTED` with no explanation.
+Run the synthetic completed-trajectory demo from the repository root. It writes `report.json`. `engine_e` is censored: the demo uses `censored_policy: report`, so that engine is named in the report and is not in train, validation, or test. The other engines are completed. The constant baseline and the histogram gradient boosting baseline are fit on the training split only. Early stopping uses the validation split. Both are scored on validation and test with root-mean-square error and mean absolute error. The NASA score is reported and is not a gate. `min_assets_per_split` defaults to 3, so the demo's one-asset validation and test splits are warnings in `risks`. Those scores are still `COMPUTED`. An empty split is `NOT_COMPUTED`, and that reason is in `risks`.
 
 ```bash
 rulsafe demo synthetic --output ./rulsafe-runs/synthetic
 ```
 
-These commands exist and exit with code 2 until the rest of the pipeline exists:
+`rulsafe demo cmapss` does not download FD001. The NASA catalog licence is not specified. If the offline files named in `examples/cmapss_fd001_completed_trajectory.yaml` are absent, the command exits with code 2 and the tree metrics for that demo are not computed. These commands still exit with code 2:
 
 ```bash
 rulsafe demo cmapss --output ./rulsafe-runs/demo
@@ -99,16 +99,16 @@ MetricValue.computed(12.5).to_json()
 # {"value": 12.5, "status": "COMPUTED"}
 ```
 
-`run_pipeline` raises `NotImplementedError` until training exists. Call `load_config` or `RunConfig.from_mapping` to validate a mapping without YAML. A disabled metric was not requested. A not-computed metric is in scope but has no number. Neither is stored as `0`.
+`run_pipeline` fits the group-holdout CSV slice. Call `load_config` or `RunConfig.from_mapping` to validate a mapping without YAML. A disabled metric was not requested. A not-computed metric is in scope but has no number, and an empty split records that reason in `risks`. Neither is stored as `0`. `censored_policy: reject` writes `report.json` with `"status": "FAILED"`, the contract violations, and `"metrics": null`, then raises `ContractError`.
 
 ## v0.1 contract
 
 - **Question.** Remaining useful life on a completed trajectory. C-MAPSS test engines are scored at the **last observation** only.
-- **Splits.** `official_partitions` or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. `global_time` is rejected: it is deferred to v0.2. The headline model is chosen on validation. A split with no assets, or fewer assets than the minimum of one, is a warning recorded in the report `risks`.
+- **Splits.** `official_partitions` or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. `global_time` is rejected: it is deferred to v0.2. The headline model is chosen on validation root-mean-square error. `min_assets_per_split` defaults to 3. A smaller split, including a one-asset validation or test split, is a warning in `risks`. An empty split is `NOT_COMPUTED` and the risk says so.
 - **Features.** At time `t`, a feature uses only records knowable at `t`. The default gap policy is `none`. Bounded forward fill is allowed. Linear interpolation is rejected.
 - **Preprocessing.** Clip bounds and scalers fit on the training split only, with a membership record.
-- **Baselines.** A training constant, and one histogram gradient boosting model. Persistence is rejected. Age and logistic regression are not in v0.1.
-- **Censored histories.** `censored_policy: reject` stops the run with an error and does not fit a split. `censored_policy: report` excludes the history from train, validation, and test, continues, and names it in the report. `drop` and `unknown_policy: exclude_from_loss` are errors.
+- **Baselines.** A training constant, and one histogram gradient boosting model trained on the training split only with a fixed `random_state`. Early stopping uses the validation split and does not hold out training rows. Root-mean-square error and mean absolute error are the primary scores. The NASA asymmetric score is secondary and is never a gate. Persistence is rejected. Age and logistic regression are not in v0.1.
+- **Censored histories.** `censored_policy: reject` writes a partial report with status `FAILED`, lists the contract violations, leaves metrics null, and then raises. `censored_policy: report` excludes the history from train, validation, and test, continues, and names it in the report. `drop` and `unknown_policy: exclude_from_loss` are errors.
 - **Audit.** Statuses are `CONFIRMED`, `WARNING`, `NOT_CHECKED`, and `PASS`. A check with no finding is reported as `NOT_CHECKED`, not as a pass. A metric with no number serialises as `{"value": null, "status": "NOT_COMPUTED"}` or `{"value": null, "status": "DISABLED"}`. It is not stored as zero.
 - **Not in v0.1.** `global_time` and `alerts` are rejected with an error that they are deferred to v0.2. They are not dropped silently.
 

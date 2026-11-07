@@ -8,17 +8,17 @@ once after that choice is frozen.
 
 import random
 from collections.abc import Mapping, Sequence
-from enum import Enum
+from enum import StrEnum
 
-from rulsafe.config import SplitProtocol
+from rulsafe.config import DEFAULT_MIN_ASSETS_PER_SPLIT, SplitProtocol
 from rulsafe.exceptions import ConfigurationError, not_implemented
 
-# One asset is the smallest split that can still be scored. Fewer than this
-# is recorded as a report risk. An empty split is the count of zero.
-MINIMUM_SPLIT_ASSET_COUNT = 1
+# Kept as the name callers already use. The value is the configured default:
+# validation and test splits smaller than this are warnings in the report.
+MINIMUM_SPLIT_ASSET_COUNT = DEFAULT_MIN_ASSETS_PER_SPLIT
 
 
-class SplitName(str, Enum):
+class SplitName(StrEnum):
     """One of the three splits every run has."""
 
     TRAIN = "train"
@@ -107,11 +107,16 @@ def split_size_risks(
             code = "empty_split"
             message = (
                 f"Split {name.value} is empty (0 assets), below the minimum of {minimum}. "
-                "Metrics for this split are not computed."
+                "Root mean square error, mean absolute error, and the NASA score "
+                "for this split are NOT_COMPUTED."
             )
         else:
             code = "split_below_minimum"
-            message = f"Split {name.value} has {count} assets, below the minimum of {minimum}."
+            asset_word = "asset" if count == 1 else "assets"
+            message = (
+                f"Split {name.value} has {count} {asset_word}, below the minimum of {minimum}. "
+                "Scores for this split are still reported."
+            )
         risks.append(
             {
                 "severity": "warning",

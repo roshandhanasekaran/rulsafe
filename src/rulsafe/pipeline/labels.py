@@ -6,13 +6,13 @@ unsupported history is rejected or reported. It is never dropped without a
 finding.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 from rulsafe.config import CensoredHistoryPolicy
 from rulsafe.exceptions import ContractError
 
 
-class HistorySupport(str, Enum):
+class HistorySupport(StrEnum):
     """Whether v0.1 knows how to score a history."""
 
     COMPLETED = "completed"
@@ -21,7 +21,7 @@ class HistorySupport(str, Enum):
     UNSUPPORTED = "unsupported"
 
 
-class HistoryDisposition(str, Enum):
+class HistoryDisposition(StrEnum):
     """What the run does with a history. There is no silent-drop value."""
 
     TRAIN = "train"
@@ -38,9 +38,10 @@ def disposition_for_history(
 
     Completed trajectories are trainable. Official C-MAPSS test endings are
     scored at the last observation. Every other history follows
-    ``censored_policy``. ``reject`` stops the run with an error. ``report``
-    leaves the history out of every split, continues, and keeps an audit row.
-    Neither path drops the history quietly.
+    ``censored_policy``. ``reject`` writes a partial report with status
+    ``FAILED`` and no metrics, then stops the run. ``report`` leaves the
+    history out of every split, continues, and keeps an audit row. Neither
+    path drops the history quietly.
 
     Args:
         support: What kind of history this is.
