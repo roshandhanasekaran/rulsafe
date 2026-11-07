@@ -15,7 +15,7 @@ This spike compares six controls and recommends one posture. The status stays **
 Checked on 7 November 2026 while writing this record:
 
 - `pip-audit` 2.10.1 accepts `--requirement`, `--disable-pip`, `--require-hashes`, and output formats `columns`, `json`, `cyclonedx-json`, `cyclonedx-xml`, and `markdown`.
-- `uv pip compile --python-version 3.10 --generate-hashes` writes a fully pinned file. One file per supported interpreter is required, because the patched `filelock` releases do not install on Python 3.10.
+- `uv pip compile --python-version 3.11 --generate-hashes` writes a fully pinned file. One file is produced for each supported interpreter: 3.11, 3.12, and 3.13. Python 3.10 is not supported.
 - PyPI JSON for `filelock` 4.2.1 through 4.2.9 reports `requires_python >=3.11`. An OSV query for PyPI `filelock` shows the current advisory fixes landing in 4.2.1.
 - The Python Packaging User Guide's GitHub Actions publishing page describes PyPI trusted publishing, a pending publisher, a separate build job, `permissions: id-token: write`, the `pypi` GitHub Environment, and `pypa/gh-action-pypi-publish`. From action v1.11.0 that action uploads [PEP 740](https://peps.python.org/pep-0740/) attestations by default.
 
@@ -23,7 +23,7 @@ Checked on 7 November 2026 while writing this record:
 
 ### 1. pip-audit against a lockfile
 
-Audit `requirements/dev-3.10.lock` through `requirements/dev-3.13.lock`, and nothing else on the machine. `--disable-pip` keeps the audit on the file the repository committed. With hashes present, `--require-hashes` checks that every pin has a hash, and `--no-deps` is no longer required for `--disable-pip`.
+Audit `requirements/dev-3.11.lock`, `requirements/dev-3.12.lock`, and `requirements/dev-3.13.lock`, and nothing else on the machine. `--disable-pip` keeps the audit on the file the repository committed. With hashes present, `--require-hashes` checks that every pin has a hash, and `--no-deps` is no longer required for `--disable-pip`. No advisory is ignored.
 
 Auditing a live virtualenv answers a different question (what this laptop happened to install). The release gate is the lock.
 
@@ -36,7 +36,7 @@ python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3
 python -m pip install --no-deps --no-build-isolation -e .
 ```
 
-The lock filename matches the interpreter (`dev-3.10.lock`, `dev-3.11.lock`, `dev-3.12.lock`, `dev-3.13.lock`).
+The lock filename matches the interpreter (`dev-3.11.lock`, `dev-3.12.lock`, `dev-3.13.lock`).
 
 `--require-hashes` rejects a missing or mismatched hash. `--only-binary=:all:` refuses an sdist, so a package cannot run `setup.py` as a substitute for the wheel whose hash is in the lock. `--no-build-isolation` builds the editable install with `hatchling` from that same lock. `hatchling` is listed in the `dev` extra so the lock contains the build backend and its dependencies.
 
@@ -82,7 +82,7 @@ A long-lived `PYPI_API_TOKEN` is the older path. This record does not add one. P
 
 Use all six, in this order of enforcement:
 
-1. One hashed lock per supported interpreter, `requirements/dev-3.10.lock` through `requirements/dev-3.13.lock`, each from `uv pip compile --python-version <version> --generate-hashes --extra dev --extra demo`.
+1. One hashed lock per supported interpreter, `requirements/dev-3.11.lock`, `requirements/dev-3.12.lock`, and `requirements/dev-3.13.lock`, each from `uv pip compile --python-version <version> --generate-hashes --extra dev --extra demo`.
 2. Every CI install uses the lock for that job's Python, with `--require-hashes` and `--only-binary=:all:`.
 3. `pip-audit --requirement requirements/dev-<version>.lock --disable-pip --require-hashes` is the vulnerability gate for that interpreter.
 4. Bandit stays on `src/` with `.bandit`.
@@ -91,12 +91,12 @@ Use all six, in this order of enforcement:
 
 `[build-system] requires` pins `hatchling==1.33.0`. The same pin is in every lock, with `editables==0.6`, so `pip install --no-deps --no-build-isolation -e .` uses that backend.
 
-`filelock` is the split. Releases that fix the current advisories, starting at 4.2.1, declare `requires_python >=3.11`. `virtualenv` (via pre-commit) and `CacheControl[filecache]` (via pip-audit) both depend on it. The 3.10 lock therefore pins `filelock==4.1.0`, which installs. The 3.11, 3.12, and 3.13 locks pin `filelock==4.2.9`. Audits of those three locks must pass with no ignored advisories. The 3.10 audit ignores only the identifiers in `requirements/filelock-unfixed-on-3.10.txt`, which are the advisories whose fix is 4.2.1. A new advisory, or `filelock==4.1.0` showing up in a newer lock, still fails the gate.
+`filelock` 4.2.1 and later fix the current advisories and require Python 3.11 or newer, which is now `requires-python`. `virtualenv` (via pre-commit) and `CacheControl[filecache]` (via pip-audit) both depend on it. Every lock pins `filelock==4.2.9`. Audits pass with no ignored advisories. A pin of `filelock==4.1.0` fails the gate.
 
 ## What is already in the tree
 
-- `requirements/dev-3.10.lock` through `requirements/dev-3.13.lock` are hashed, and CI installs the file that matches the job's Python with `--require-hashes`.
-- `pip-audit` reads that same file with `--disable-pip --require-hashes`. The 3.10 job ignores only the filelock advisories listed in `requirements/filelock-unfixed-on-3.10.txt`.
+- `requirements/dev-3.11.lock`, `requirements/dev-3.12.lock`, and `requirements/dev-3.13.lock` are hashed, and CI installs the file that matches the job's Python with `--require-hashes`.
+- `pip-audit` reads that same file with `--disable-pip --require-hashes` and no ignored advisories.
 - Bandit uses `.bandit`.
 - The security workflow runs gitleaks over `--log-opts=--all`.
 - Tests call the local `ruff`, `mypy`, `bandit`, and `gitleaks` binaries on a planted violation. A test that needs a download uses the `network` marker and stays out of the default run.
@@ -109,8 +109,8 @@ Use all six, in this order of enforcement:
 
 ## Consequences
 
-- Lock diffs get larger because each pin lists many hashes, and there are four files. Regenerate them. Do not edit hashes by hand.
+- Lock diffs get larger because each pin lists many hashes, and there are three files. Regenerate them. Do not edit hashes by hand.
 - Contributors install the lock that matches their interpreter. The command is in `CONTRIBUTING.md`.
 - `pip` is pinned in these locks because `pip-api` depends on it. The upgrade step in CI only exists so an older installer can read `--require-hashes` before the lock replaces it.
-- Python 3.10 development installs include `filelock==4.1.0`. That is a known, documented gap. It is not hidden by resolving the extra without a lock.
+- Python 3.10 is outside `requires-python`. There is no 3.10 lock and no advisory ignore list.
 - Secret-scanning tests and the full-history scan must keep planted material out of this repository's commits. The tests write it under the pytest temporary directory.

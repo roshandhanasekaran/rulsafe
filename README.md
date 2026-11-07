@@ -8,13 +8,13 @@ v0.1 does not silently drop a history it cannot score. A censored or unsupported
 
 ## Install
 
-Python 3.10 or newer:
+Python 3.11 or newer:
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-`[demo]` adds Jinja2 for the later HTML report. Matplotlib is intentionally not pinned yet: current Matplotlib releases do not support the whole 3.10–3.13 range this foundation tests.
+`[demo]` adds Jinja2 for the later HTML report. Matplotlib is intentionally not pinned yet. Matplotlib 3.11.2 requires Python 3.11 or newer, which matches this package, and it is still not a v0.1 dependency.
 
 ## What works in this foundation
 
@@ -154,6 +154,6 @@ mypy src
 pytest
 ```
 
-Use the lock whose name matches the interpreter (`dev-3.10.lock` through `dev-3.13.lock`). The supply-chain notes are in [ADR-010](docs/decisions/ADR-010-security-supply-chain.md).
+Use the lock whose name matches the interpreter (`dev-3.11.lock`, `dev-3.12.lock`, or `dev-3.13.lock`). The supply-chain notes are in [ADR-010](docs/decisions/ADR-010-security-supply-chain.md).
 
 Licence: Apache-2.0. Dataset licences stay with the dataset owners. The wheel does not contain third-party data files.

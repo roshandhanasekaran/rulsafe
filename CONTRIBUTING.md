@@ -4,7 +4,7 @@ RULSafe v0.1 is a completed-trajectory remaining-useful-life toolkit. SCANIA and
 
 ## Setup
 
-Use Python 3.10, 3.11, 3.12, or 3.13. Continuous integration installs the hashed lock for that same interpreter.
+Use Python 3.11, 3.12, or 3.13. Continuous integration installs the hashed lock for that same interpreter.
 
 ```bash
 python -m venv .venv
@@ -16,7 +16,7 @@ bash scripts/install-gitleaks.sh
 pre-commit install
 ```
 
-Replace `dev-3.12.lock` with `dev-3.10.lock`, `dev-3.11.lock`, or `dev-3.13.lock` when that is the interpreter in the virtualenv. The 3.10 lock pins `filelock==4.1.0` because the patched 4.2 releases require Python 3.11. Those advisories are listed in `requirements/filelock-unfixed-on-3.10.txt` and are ignored only when that lock is audited.
+Replace `dev-3.12.lock` with `dev-3.11.lock` or `dev-3.13.lock` when that is the interpreter in the virtualenv. Every lock pins `filelock==4.2.9`. Audits do not ignore advisories.
 
 Before a pull request:
 
@@ -72,7 +72,7 @@ Schema and command-line tests live in `tests/unit/`. Planted leakage fixtures an
 
 A leakage check that did not run is `NOT_CHECKED`, not a pass. Do not add `global_time` or alerts in v0.1; both are deferred to v0.2 and the schema must reject them with that reason.
 
-Regenerate every hashed lock after a dependency change. `uv pip compile --python-version` resolves for that interpreter, and `--generate-hashes` records the artefact hashes. Repeat the command for 3.10, 3.11, 3.12, and 3.13. `Jinja2` stays on 3.1.6, which is the lower bound in `pyproject.toml`. Hypothesis is capped below 6.169 so the 3.10 resolution still succeeds. The build backend is pinned to `hatchling==1.33.0`.
+Regenerate every hashed lock after a dependency change. `uv pip compile --python-version` resolves for that interpreter, and `--generate-hashes` records the artefact hashes. Repeat the command for 3.11, 3.12, and 3.13. `Jinja2` stays on 3.1.6, which is the lower bound in `pyproject.toml`. Hypothesis stays below 6.169 and coverage below 7.17, matching `pyproject.toml`. The build backend is pinned to `hatchling==1.33.0`.
 
 ```bash
 uv pip compile pyproject.toml \

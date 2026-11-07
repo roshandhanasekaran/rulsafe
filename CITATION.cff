@@ -10,5 +10,5 @@ license: Apache-2.0
 abstract: >-
   Completed-trajectory remaining-useful-life checks for v0.1, with causal
   windows, train-only preprocessing, and an audit that reports censored or
-  unsupported histories instead of dropping them. C-MAPSS FD001 is the demo.
-  SCANIA Component X is deferred to v0.2.
+  unsupported histories instead of dropping them. Requires Python 3.11 or
+  newer. C-MAPSS FD001 is the demo. SCANIA Component X is deferred to v0.2.

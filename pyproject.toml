@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Completed-trajectory remaining-useful-life checks with an explicit leakage audit."
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "RULSafe contributors" }]
 keywords = [
   "remaining-useful-life",
@@ -24,7 +24,6 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -133,7 +132,7 @@ convention = "google"
 known-first-party = ["rulsafe"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 strict = true
 warn_unused_configs = true
 packages = ["rulsafe"]

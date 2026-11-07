@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -80,7 +80,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -92,22 +92,11 @@ jobs:
           python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-${{ matrix.python-version }}.lock
       - name: Audit the lock for this interpreter
         run: |
-          set -euo pipefail
-          args=(
-            --requirement "requirements/dev-${{ matrix.python-version }}.lock"
-            --disable-pip
-            --require-hashes
+          pip-audit \
+            --requirement "requirements/dev-${{ matrix.python-version }}.lock" \
+            --disable-pip \
+            --require-hashes \
             --progress-spinner=off
-          )
-          if [[ "${{ matrix.python-version }}" == "3.10" ]]; then
-            while read -r vuln_id; do
-              case "${vuln_id}" in
-                ""|\#*) continue ;;
-              esac
-              args+=(--ignore-vuln "${vuln_id}")
-            done < requirements/filelock-unfixed-on-3.10.txt
-          fi
-          pip-audit "${args[@]}"
 
   build:
     name: Build wheel
