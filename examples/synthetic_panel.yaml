@@ -1,6 +1,6 @@
-# Synthetic completed-trajectory panel for local tests.
-# The CSV paths are not shipped in this foundation release, and validate does not open them.
-# A censored history in this panel must be reported, not dropped.
+# Synthetic completed-trajectory panel.
+# engine_e is censored and must be reported, not dropped.
+# engine_a has one delayed temperature that is not knowable at time 0.
 
 project:
   name: synthetic-completed-trajectory

@@ -9,7 +9,7 @@ finding.
 from enum import Enum
 
 from rulsafe.config import CensoredHistoryPolicy
-from rulsafe.exceptions import not_implemented
+from rulsafe.exceptions import ContractError
 
 
 class HistorySupport(str, Enum):
@@ -61,17 +61,38 @@ def assign_remaining_life(
     *,
     support: HistorySupport,
     policy: CensoredHistoryPolicy,
+    prediction_time: float,
+    episode_end: float | None,
 ) -> float | None:
-    """Assign a remaining-life target, or refuse a history v0.1 cannot score.
+    """Assign remaining life, or record that this history is not scored.
+
+    A censored or unsupported history returns None when the policy is
+    ``report``. It raises when the policy is ``reject``. The caller must
+    keep the history in the report either way. Completed histories return
+    ``episode_end - prediction_time``.
 
     Args:
         support: What kind of history this is.
         policy: Configured policy for censored and unsupported histories.
+        prediction_time: Time ``t``.
+        episode_end: Failure time, or the close time for a censored history.
 
     Returns:
-        Remaining life for a trainable or last-observation history.
+        Remaining life for a scored history, otherwise None.
 
     Raises:
-        NotImplementedError: Target assignment is not implemented yet.
+        ContractError: The policy rejects this history, or a scored history
+            has no end time.
     """
-    raise not_implemented("assign_remaining_life", support, policy)
+    disposition = disposition_for_history(support, policy)
+    if disposition is HistoryDisposition.REJECT:
+        raise ContractError(
+            "A censored or unsupported history was rejected. It was not dropped silently."
+        )
+    if disposition is HistoryDisposition.REPORT:
+        return None
+    if episode_end is None:
+        raise ContractError("A scored history needs an episode end.")
+    if episode_end < prediction_time:
+        raise ContractError("The episode end is earlier than the prediction time.")
+    return episode_end - prediction_time

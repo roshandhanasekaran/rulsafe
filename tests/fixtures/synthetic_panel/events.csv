@@ -1,0 +1,6 @@
+asset_id,event_time,available_at,event_type,failure_notes
+engine_a,2,2,failure,bearing
+engine_b,2,2,failure,bearing
+engine_c,2,2,failure,bearing
+engine_d,2,2,failure,bearing
+engine_e,1,1,censored_end,left-study

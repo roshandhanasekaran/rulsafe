@@ -71,6 +71,14 @@ def test_dataset_list_and_fetch_keep_licences_separate() -> None:
     assert "not implemented" in cmapss_fetch.stdout.lower()
 
 
+def test_demo_synthetic_writes_the_censored_asset(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["demo", "synthetic", "--output", str(tmp_path)])
+    assert result.exit_code == 0
+    report = (tmp_path / "report.json").read_text(encoding="utf-8")
+    assert "engine_e" in report
+    assert "NOT_COMPUTED" in report
+
+
 def test_unknown_demo_and_dataset_are_usage_errors() -> None:
     unknown_demo = runner.invoke(app, ["demo", "bearings"])
     assert unknown_demo.exit_code == 2
@@ -95,7 +103,6 @@ def test_missing_config_exits_with_usage_code(tmp_path: Path) -> None:
         ["check", "--config", "run.yaml"],
         ["train", "--config", "run.yaml"],
         ["report", "--run", "rulsafe-runs/demo"],
-        ["demo", "synthetic"],
     ],
 )
 def test_unimplemented_commands_exit_with_usage_code(arguments: list[str]) -> None:

@@ -31,11 +31,16 @@ rulsafe datasets list
 
 `rulsafe validate` checks the YAML contract only. It does not open the data files.
 
-These commands exist and exit with code 2 until the pipeline exists:
+Run the synthetic completed-trajectory demo from the repository root. It writes `report.json`. `engine_e` is censored and stays in that report. The constant baseline is fit on the training split only. The tree baseline is `NOT_COMPUTED`.
+
+```bash
+rulsafe demo synthetic --output ./rulsafe-runs/synthetic
+```
+
+These commands exist and exit with code 2 until the rest of the pipeline exists:
 
 ```bash
 rulsafe demo cmapss --output ./rulsafe-runs/demo
-rulsafe demo synthetic
 rulsafe check --config examples/cmapss_fd001_completed_trajectory.yaml
 rulsafe train --config examples/cmapss_fd001_completed_trajectory.yaml
 ```

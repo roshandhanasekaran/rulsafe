@@ -10,7 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from rulsafe.config import BaselineName
-from rulsafe.exceptions import not_implemented
+from rulsafe.exceptions import ContractError, not_implemented
 
 
 @dataclass(frozen=True)
@@ -20,10 +20,12 @@ class FittedBaseline:
     Attributes:
         name: ``constant`` or ``hist_gradient_boosting``.
         training_row_count: Rows used to fit the model.
+        constant_value: Training mean for the constant baseline. None for other models.
     """
 
     name: BaselineName
     training_row_count: int
+    constant_value: float | None = None
 
     def __post_init__(self) -> None:
         """Reject a fit record that did not see a non-negative training count."""
@@ -38,12 +40,20 @@ def fit_constant_baseline(*, training_targets: Sequence[float]) -> FittedBaselin
         training_targets: Completed-trajectory targets from the training split.
 
     Returns:
-        A constant model. Validation chooses any threshold or display cutoff.
+        A constant model whose value is the training mean. Held-out targets
+        are not an argument, so they cannot move this value.
 
     Raises:
-        NotImplementedError: Fitting is not implemented yet.
+        ContractError: There is no training target.
     """
-    raise not_implemented("fit_constant_baseline", training_targets)
+    if not training_targets:
+        raise ContractError("The constant baseline needs at least one training target.")
+    mean_value = sum(training_targets) / len(training_targets)
+    return FittedBaseline(
+        name=BaselineName.CONSTANT,
+        training_row_count=len(training_targets),
+        constant_value=mean_value,
+    )
 
 
 def fit_histogram_gradient_boosting(

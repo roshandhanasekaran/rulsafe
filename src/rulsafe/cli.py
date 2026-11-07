@@ -18,7 +18,13 @@ from rulsafe._version import __version__
 from rulsafe.api import load_config
 from rulsafe.datasets.cards import DatasetCard
 from rulsafe.datasets.registry import dataset_card, fetch_dataset, list_datasets
-from rulsafe.exceptions import EXIT_USAGE_ERROR, ConfigurationError, not_implemented
+from rulsafe.exceptions import (
+    EXIT_CHECK_FAILED,
+    EXIT_USAGE_ERROR,
+    ConfigurationError,
+    ContractError,
+    not_implemented,
+)
 
 console = Console()
 _DEFAULT_INIT_PATH = Path("run.yaml")
@@ -194,7 +200,22 @@ def demo_command(
     if normalized not in _V01_DEMOS:
         console.print("Unknown demo. Choose cmapss or synthetic.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
-    _exit_not_implemented("demo", normalized, output)
+    if normalized == "cmapss":
+        _exit_not_implemented("demo", normalized, output)
+    from rulsafe.api import run_pipeline
+
+    destination = output if output is not None else Path("rulsafe-runs") / "synthetic"
+    try:
+        config = load_config(Path("examples") / "synthetic_panel.yaml")
+        result = run_pipeline(config, output_directory=destination)
+    except ContractError as error:
+        console.print(str(error))
+        raise typer.Exit(code=EXIT_CHECK_FAILED) from error
+    except (ConfigurationError, OSError) as error:
+        console.print(str(error))
+        raise typer.Exit(code=EXIT_USAGE_ERROR) from error
+    console.print(f"Wrote {result.report_paths.json_path}")
+    console.print(f"Leakage status: {result.leakage.worst_status.value}")
 
 
 @datasets_app.command("list")

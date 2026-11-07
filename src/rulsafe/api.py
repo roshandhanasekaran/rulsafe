@@ -1,10 +1,12 @@
 """Public Python API.
 
-``load_config`` validates a YAML file. ``run_pipeline`` is the v0.1 entry
-point and is not implemented yet. Results will carry an audit whose missing
-checks are ``NOT_CHECKED``, never an implied pass.
+``load_config`` validates a YAML file. ``run_pipeline`` runs the CSV
+group-holdout slice and writes ``report.json``. Checks that did not run
+stay ``NOT_CHECKED``.
 """
 
+import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import yaml
@@ -48,6 +50,7 @@ class RunResult:
         leakage: LeakageSuiteResult,
         metrics: MetricsReport,
         report_paths: ReportPaths,
+        document: Mapping[str, object] | None = None,
     ) -> None:
         """Store the objects a finished run will expose.
 
@@ -55,10 +58,12 @@ class RunResult:
             leakage: Leakage audit.
             metrics: Scores by split.
             report_paths: Written report files.
+            document: JSON report body, when the run wrote one.
         """
         self.leakage = leakage
         self.metrics = metrics
         self.report_paths = report_paths
+        self._document = document
 
     def save_html(self, path: str | Path) -> Path:
         """Write a self-contained HTML report.
@@ -84,9 +89,13 @@ class RunResult:
             The path that was written.
 
         Raises:
-            NotImplementedError: JSON reports are not implemented yet.
+            NotImplementedError: This result was not produced by a run.
         """
-        raise not_implemented("RunResult.save_json", path)
+        if self._document is None:
+            raise not_implemented("RunResult.save_json", path)
+        destination = Path(path)
+        destination.write_text(json.dumps(self._document, indent=2) + "\n", encoding="utf-8")
+        return destination
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-ready mapping of the run.
@@ -95,9 +104,11 @@ class RunResult:
             Report fields, including leakage coverage.
 
         Raises:
-            NotImplementedError: Serialization is not implemented yet.
+            NotImplementedError: This result was not produced by a run.
         """
-        raise not_implemented("RunResult.to_dict")
+        if self._document is None:
+            raise not_implemented("RunResult.to_dict")
+        return dict(self._document)
 
     def _repr_html_(self) -> str:
         """Return a compact notebook summary.
@@ -150,11 +161,12 @@ def load_config(path: str | Path) -> RunConfig:
 
 
 def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> RunResult:
-    """Run the v0.1 completed-trajectory check.
+    """Run the implemented completed-trajectory check.
 
-    The later implementation keeps train, validation, and final test apart,
-    builds causal windows, fits preprocessing on train only, and writes an
-    audit. Censored and unsupported histories are rejected or reported.
+    Group holdout on CSV files is implemented. The constant baseline is fit
+    on training targets only. The tree baseline is reported as not computed.
+    Censored histories stay in the JSON report. Official partitions, Parquet,
+    and the C-MAPSS demo are not implemented yet.
 
     Args:
         config: Validated run configuration.
@@ -162,9 +174,22 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
             report directory is used when this is None.
 
     Returns:
-        The run result, including report paths.
+        The run result, including the JSON report path.
 
     Raises:
-        NotImplementedError: The pipeline is not implemented yet.
+        ConfigurationError: The files or protocol are outside this slice.
+        ContractError: A censored history was configured to be rejected.
     """
-    raise not_implemented("run_pipeline", config, output_directory)
+    from rulsafe.pipeline.execute import execute_group_holdout
+
+    destination = (
+        output_directory if output_directory is not None else Path(config.report.output_dir)
+    )
+    leakage, metrics, document = execute_group_holdout(config, destination)
+    report_path = destination / "report.json"
+    return RunResult(
+        leakage=leakage,
+        metrics=metrics,
+        report_paths=ReportPaths(html_path=None, json_path=report_path),
+        document=document,
+    )

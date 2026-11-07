@@ -1,0 +1,16 @@
+asset_id,event_time,available_at,temperature,pressure
+engine_a,0,0,10,1
+engine_a,1,1,20,2
+engine_a,2,2,30,3
+engine_a,0,3,99,9
+engine_b,0,0,11,1
+engine_b,1,1,21,2
+engine_b,2,2,31,3
+engine_c,0,0,12,1
+engine_c,1,1,22,2
+engine_c,2,2,32,3
+engine_d,0,0,13,1
+engine_d,1,1,23,2
+engine_d,2,2,33,3
+engine_e,0,0,14,1
+engine_e,1,1,24,2

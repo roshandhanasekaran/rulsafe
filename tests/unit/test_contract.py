@@ -35,7 +35,7 @@ def test_unsupported_suffix_is_rejected_before_read() -> None:
     with pytest.raises(ConfigurationError, match="parquet"):
         load_table(Path("signals.xlsx"), LogicalTableRole.SIGNALS)
     with pytest.raises(NotImplementedError):
-        load_table(Path("signals.csv"), LogicalTableRole.SIGNALS)
+        load_table(Path("signals.parquet"), LogicalTableRole.SIGNALS)
 
 
 def test_censored_histories_are_not_dropped() -> None:

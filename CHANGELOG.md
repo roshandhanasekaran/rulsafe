@@ -15,6 +15,10 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Command-line commands for the later pipeline. `validate` and `datasets list` work. `demo cmapss` is reserved and not implemented.
 - Ruff, mypy, pytest, pre-commit, bandit, gitleaks, and pip-audit wiring.
 
+### Added
+
+- `rulsafe demo synthetic` runs the CSV group-holdout slice. Causal features ignore later rows. The censored asset stays in `report.json`. The constant baseline uses training targets only. The tree metric is `NOT_COMPUTED`.
+
 ### Changed
 
 - `global_time` and alerts are rejected. The error says both are deferred to v0.2.
