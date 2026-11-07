@@ -7,7 +7,6 @@ a report. Censored fleet tasks are rejected instead of being silently ignored.
 
 import math
 from collections.abc import Mapping, Sequence
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
@@ -36,10 +35,12 @@ from rulsafe.models.forbid_persistence import reject_persistence_baseline
 
 
 class SplitProtocol(str, Enum):
-    """Named way to build train, validation, and final test."""
+    """Named way to build train, validation, and final test.
+
+    ``global_time`` is deferred to v0.2 and is rejected rather than ignored.
+    """
 
     OFFICIAL_PARTITIONS = "official_partitions"
-    GLOBAL_TIME = "global_time"
     GROUP_HOLDOUT = "group_holdout"
 
 
@@ -100,7 +101,8 @@ class LeakageStatus(str, Enum):
     CONFIRMED = "CONFIRMED"
     WARNING = "WARNING"
     NOT_CHECKED = "NOT_CHECKED"
-    PASS = "PASS"  # noqa: S105
+    # "PASS" is a leakage-audit status, not a password. Bandit B105 matches the name.
+    PASS = "PASS"  # noqa: S105  # nosec B105
 
 
 class LeakageCheckId(str, Enum):
@@ -130,12 +132,6 @@ class LeakageCheckId(str, Enum):
     BACKEND_INTERNAL_SPLIT = "backend_internal_split"
 
 
-class AlertCadence(str, Enum):
-    """How often an alert score is produced."""
-
-    EVERY_ROW = "every_row"
-
-
 class SplitReportName(str, Enum):
     """A split that can appear in the report."""
 
@@ -147,9 +143,8 @@ class SplitReportName(str, Enum):
 class PlotName(str, Enum):
     """A plot the report will include once plotting exists.
 
-    The first three are the v0.1 completed-trajectory plots. Precision-recall,
-    calibration, and alert lead times are accepted so a fleet plot request is
-    reported rather than dropped, and they are not the v0.1 headline.
+    The first three are the v0.1 completed-trajectory plots. Alert plots are
+    rejected: alerts are deferred to v0.2.
     """
 
     PREDICTION_ERROR = "prediction_error"
@@ -157,7 +152,6 @@ class PlotName(str, Enum):
     HISTORY_DISPOSITIONS = "history_dispositions"
     PRECISION_RECALL = "pr_curve"
     CALIBRATION = "calibration"
-    ALERT_LEAD_TIMES = "alert_lead_times"
     LABEL_COUNTS = "label_counts"
 
 
@@ -292,8 +286,18 @@ def _parse_gap_policy_value(value: object) -> object:
         raise ValueError(str(error)) from error
 
 
+_GLOBAL_TIME_DEFERRED = (
+    "global_time is deferred to v0.2. v0.1 accepts official_partitions and group_holdout."
+)
+_ALERTS_DEFERRED = (
+    "alerts are deferred to v0.2. "
+    "v0.1 does not accept an alert block, an alerts block, or alert plots."
+)
+_ALERT_PLOT_NAMES = frozenset({"alert_lead_times", "alerts"})
+
+
 def _parse_protocol_value(value: object) -> object:
-    """Parse a split protocol and reject ``random``.
+    """Parse a split protocol and reject ``random`` and ``global_time``.
 
     Args:
         value: Raw protocol value.
@@ -302,10 +306,12 @@ def _parse_protocol_value(value: object) -> object:
         The normalized protocol string, or ``value`` when it is not a string.
 
     Raises:
-        ValueError: The protocol is ``random``.
+        ValueError: The protocol is ``random`` or the deferred ``global_time`` protocol.
     """
     if not isinstance(value, str):
         return value
+    if value.strip().casefold() == "global_time":
+        raise ValueError(_GLOBAL_TIME_DEFERRED)
     try:
         return reject_random_split(value)
     except ConfigurationError as error:
@@ -407,29 +413,6 @@ def _parse_feature_columns(value: object) -> object:
     return value
 
 
-def _parse_cooldown(value: object) -> object:
-    """Accept ``horizon`` or a non-negative integer cooldown.
-
-    Args:
-        value: Raw cooldown value.
-
-    Returns:
-        ``horizon`` or an integer.
-
-    Raises:
-        ValueError: The cooldown is a boolean, a negative number, or another word.
-    """
-    if isinstance(value, bool):
-        raise ValueError("cooldown must be 'horizon' or a non-negative integer.")
-    if isinstance(value, str):
-        if value.strip().casefold() != "horizon":
-            raise ValueError("cooldown must be 'horizon' or a non-negative integer.")
-        return "horizon"
-    if isinstance(value, int) and value < 0:
-        raise ValueError("cooldown must be zero or greater.")
-    return value
-
-
 def _parse_threshold_split(value: object) -> object:
     """Accept only the validation split for threshold selection.
 
@@ -516,52 +499,6 @@ def _require_ratio_split(train_ratio: float, validation_ratio: float, test_ratio
     total = train_ratio + validation_ratio + test_ratio
     if not math.isclose(total, 1.0, abs_tol=1e-6):
         raise ValueError(f"Split ratios must sum to 1. They sum to {total}.")
-
-
-def _require_ordered_datetimes(validation_start: datetime, test_start: datetime) -> None:
-    """Require two datetimes to share timezone awareness and to be ordered.
-
-    Args:
-        validation_start: First prediction time in validation.
-        test_start: First prediction time in the final test.
-
-    Raises:
-        ValueError: Timezone awareness differs, or validation is not earlier.
-    """
-    start_offset = (
-        None
-        if validation_start.tzinfo is None
-        else validation_start.tzinfo.utcoffset(validation_start)
-    )
-    test_offset = None if test_start.tzinfo is None else test_start.tzinfo.utcoffset(test_start)
-    if (start_offset is None) != (test_offset is None):
-        raise ValueError(
-            "validation_start and test_start must both include a timezone or both omit one."
-        )
-    if validation_start >= test_start:
-        raise ValueError("validation_start must be earlier than test_start.")
-
-
-def _require_ordered_cuts(
-    validation_start: int | float | datetime,
-    test_start: int | float | datetime,
-) -> None:
-    """Require the validation cut to be strictly earlier than the test cut.
-
-    Args:
-        validation_start: First prediction time included in validation.
-        test_start: First prediction time included in the final test.
-
-    Raises:
-        ValueError: The cuts differ in kind, timezone awareness, or order.
-    """
-    if isinstance(validation_start, datetime) and isinstance(test_start, datetime):
-        _require_ordered_datetimes(validation_start, test_start)
-        return
-    if isinstance(validation_start, datetime) or isinstance(test_start, datetime):
-        raise ValueError("validation_start and test_start must be the same kind of value.")
-    if validation_start >= test_start:
-        raise ValueError("validation_start must be earlier than test_start.")
 
 
 def _require_percentile_pair(percentiles: tuple[float, float]) -> None:
@@ -935,31 +872,6 @@ class OfficialPartitionsConfig(StrictConfigModel):
         return self
 
 
-class GlobalTimeConfig(StrictConfigModel):
-    """Time cuts on one shared timeline.
-
-    The same asset may appear on both sides of a cut. The report must say so
-    once reporting exists.
-
-    Attributes:
-        validation_start: First prediction time in validation.
-        test_start: First prediction time in the final test.
-    """
-
-    validation_start: int | float | datetime
-    test_start: int | float | datetime
-
-    @model_validator(mode="after")
-    def check_order(self) -> "GlobalTimeConfig":
-        """Require a validation cut strictly before the test cut.
-
-        Returns:
-            This configuration when the cuts are ordered.
-        """
-        _require_ordered_cuts(self.validation_start, self.test_start)
-        return self
-
-
 class GroupHoldoutConfig(StrictConfigModel):
     """Assign whole groups to one split each.
 
@@ -989,46 +901,55 @@ class GroupHoldoutConfig(StrictConfigModel):
 class SplitConfig(StrictConfigModel):
     """Which named protocol builds the three splits.
 
-    ``random`` is rejected. Only the block for the selected protocol may be set.
+    ``random`` is rejected. ``global_time`` is deferred to v0.2. Only the block
+    for the selected protocol may be set.
 
     Attributes:
         protocol: Named split protocol.
         official_partitions: Id files for ``official_partitions``.
-        global_time: Cuts for ``global_time``.
         group_holdout: Ratios for ``group_holdout``.
     """
 
     protocol: Annotated[SplitProtocol, BeforeValidator(_parse_protocol_value)]
     official_partitions: OfficialPartitionsConfig | None = None
-    global_time: GlobalTimeConfig | None = None
     group_holdout: GroupHoldoutConfig | None = None
 
     @model_validator(mode="before")
     @classmethod
     def reject_split_type_key(cls, value: object) -> object:
-        """Reject the legacy ``type`` key, including ``type: random``.
+        """Reject ``global_time`` and the legacy ``type`` key.
 
         Args:
             value: Raw split mapping.
 
         Returns:
-            The original value when it does not use ``type``.
+            The original value when it is a v0.1 split.
 
         Raises:
-            ValueError: ``split.type`` is present.
+            ValueError: ``global_time`` or ``split.type`` is present.
         """
         mapping = _string_key_mapping(value)
-        if mapping is None or "type" not in mapping:
+        if mapping is None:
+            return value
+        protocol = mapping.get("protocol")
+        if isinstance(protocol, str) and protocol.strip().casefold() == "global_time":
+            raise ValueError(_GLOBAL_TIME_DEFERRED)
+        if "global_time" in mapping:
+            raise ValueError(_GLOBAL_TIME_DEFERRED)
+        if "type" not in mapping:
             return value
         raw_type = mapping["type"]
         if isinstance(raw_type, str):
+            if raw_type.strip().casefold() == "global_time":
+                raise ValueError(_GLOBAL_TIME_DEFERRED)
             try:
                 reject_random_split(raw_type)
             except ConfigurationError as error:
                 raise ValueError(str(error)) from error
         raise ValueError(
             "Use split.protocol, not split.type. "
-            "Allowed protocols: official_partitions, global_time, group_holdout."
+            "v0.1 accepts official_partitions and group_holdout. "
+            "global_time is deferred to v0.2."
         )
 
     @model_validator(mode="after")
@@ -1040,7 +961,6 @@ class SplitConfig(StrictConfigModel):
         """
         blocks = {
             SplitProtocol.OFFICIAL_PARTITIONS: self.official_partitions,
-            SplitProtocol.GLOBAL_TIME: self.global_time,
             SplitProtocol.GROUP_HOLDOUT: self.group_holdout,
         }
         if blocks[self.protocol] is None:
@@ -1148,29 +1068,15 @@ class ModelsConfig(StrictConfigModel):
         return include
 
 
-class AlertConfig(StrictConfigModel):
-    """Simple alerter evaluated beside window metrics.
-
-    Attributes:
-        cadence: How often a score is produced.
-        cooldown: ``horizon`` or a non-negative number of steps.
-    """
-
-    cadence: AlertCadence = AlertCadence.EVERY_ROW
-    cooldown: Annotated[str | int, BeforeValidator(_parse_cooldown)] = "horizon"
-
-
 class EvaluationConfig(StrictConfigModel):
     """Where the headline model is chosen, and which plots are requested.
 
     v0.1 chooses the headline model on validation and scores the final test
-    once. Fleet alert metrics are stored so the request is visible, and the
-    v0.1 report marks them as not covered.
+    once. An alert block is rejected. Alerts are deferred to v0.2.
 
     Attributes:
         threshold_split: Must be validation. v0.1 uses this as the choice split.
         report_split_order: Train, validation, and test, each once.
-        alert: Fleet alert settings. Not a v0.1 headline metric.
         plots: Plot names to include once plotting exists.
     """
 
@@ -1182,7 +1088,6 @@ class EvaluationConfig(StrictConfigModel):
             SplitReportName.TEST,
         ]
     )
-    alert: AlertConfig = Field(default_factory=AlertConfig)
     plots: list[PlotName] = Field(
         default_factory=lambda: [
             PlotName.PREDICTION_ERROR,
@@ -1219,6 +1124,32 @@ class EvaluationConfig(StrictConfigModel):
         """
         _require_unique(plots, "plot")
         return plots
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_alerts(cls, value: object) -> object:
+        """Reject alert settings. They are deferred to v0.2.
+
+        Args:
+            value: Raw evaluation mapping.
+
+        Returns:
+            The original value when it does not request alerts.
+
+        Raises:
+            ValueError: An alert block or an alert plot is present.
+        """
+        mapping = _string_key_mapping(value)
+        if mapping is None:
+            return value
+        if "alert" in mapping or "alerts" in mapping:
+            raise ValueError(_ALERTS_DEFERRED)
+        plots = mapping.get("plots")
+        if isinstance(plots, list):
+            for plot_name in plots:
+                if isinstance(plot_name, str) and plot_name.strip().casefold() in _ALERT_PLOT_NAMES:
+                    raise ValueError(_ALERTS_DEFERRED)
+        return value
 
 
 class ReportConfig(StrictConfigModel):
@@ -1271,7 +1202,7 @@ class RunConfig(StrictConfigModel):
         preprocessing: Train-only clip and scale settings.
         leakage: Fail and warn checks.
         models: Baselines to fit.
-        evaluation: Validation choices, alerts, and plots.
+        evaluation: Validation choices and plots. Alerts are deferred to v0.2.
         report: Output formats and directory.
     """
 
@@ -1290,6 +1221,25 @@ class RunConfig(StrictConfigModel):
     evaluation: EvaluationConfig
     report: ReportConfig
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_top_level_alerts(cls, value: object) -> object:
+        """Reject a top-level alerts block. Alerts are deferred to v0.2.
+
+        Args:
+            value: Raw configuration mapping.
+
+        Returns:
+            The original value when alerts were not requested.
+
+        Raises:
+            ValueError: ``alert`` or ``alerts`` is present.
+        """
+        mapping = _string_key_mapping(value)
+        if mapping is not None and ("alert" in mapping or "alerts" in mapping):
+            raise ValueError(_ALERTS_DEFERRED)
+        return value
+
     @model_validator(mode="after")
     def check_cross_fields(self) -> "RunConfig":
         """Check rules that span more than one configuration block.
@@ -1297,7 +1247,6 @@ class RunConfig(StrictConfigModel):
         Returns:
             This configuration when the blocks agree.
         """
-        _require_cuts_match_timestamp(self.signals, self.split)
         _require_allowlist_is_safe(self)
         _overlap_message(
             self.events.terminal_types,
@@ -1325,26 +1274,6 @@ class RunConfig(StrictConfigModel):
             return cls.model_validate(dict(mapping))
         except ValidationError as error:
             raise ConfigurationError(str(error)) from error
-
-
-def _require_cuts_match_timestamp(signals: SignalsConfig, split: SplitConfig) -> None:
-    """Require global-time cuts to use the same kind of clock as the signals.
-
-    Args:
-        signals: Signal mapping, including the timestamp type.
-        split: Split protocol and cuts.
-
-    Raises:
-        ValueError: Datetime signals are paired with numeric cuts, or the reverse.
-    """
-    cuts = split.global_time
-    if cuts is None:
-        return
-    cuts_are_datetimes = isinstance(cuts.validation_start, datetime)
-    if signals.timestamp_type is TimestampType.DATETIME and not cuts_are_datetimes:
-        raise ValueError("datetime timestamps require datetime validation_start and test_start.")
-    if signals.timestamp_type is not TimestampType.DATETIME and cuts_are_datetimes:
-        raise ValueError("cycle and integer_step timestamps require numeric split cuts.")
 
 
 def _explicit_feature_names(config: RunConfig) -> list[str]:
@@ -1390,8 +1319,6 @@ def _require_allowlist_is_safe(config: RunConfig) -> None:
 __all__ = [
     "DEFAULT_FAIL_ON_CHECKS",
     "DEFAULT_WARN_ON_CHECKS",
-    "AlertCadence",
-    "AlertConfig",
     "AssetsConfig",
     "BaselineName",
     "CensoredHistoryPolicy",
@@ -1399,7 +1326,6 @@ __all__ = [
     "ContractConfig",
     "EvaluationConfig",
     "EventsConfig",
-    "GlobalTimeConfig",
     "GroupHoldoutConfig",
     "LabelTask",
     "LabelingConfig",

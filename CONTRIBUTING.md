@@ -65,4 +65,14 @@ Schema and command-line tests live in `tests/unit/`. Planted leakage fixtures an
 
 ## Reports
 
-A leakage check that did not run is `NOT_CHECKED`, not a pass. Fleet alert metrics are not covered in v0.1; say so in the report instead of omitting the section.
+A leakage check that did not run is `NOT_CHECKED`, not a pass. Do not add `global_time` or alerts in v0.1; both are deferred to v0.2 and the schema must reject them with that reason.
+
+Regenerate `requirements/dev.lock` in a clean Python 3.12 virtualenv after a dependency change. 3.12 is the interpreter used for that file because the patched `filelock` releases require Python 3.11 or newer. `Jinja2` stays on 3.1.6, which is the lower bound in `pyproject.toml`.
+
+```bash
+python3.12 -m venv /tmp/rulsafe-lock
+/tmp/rulsafe-lock/bin/python -m pip install pip-tools
+/tmp/rulsafe-lock/bin/pip-compile --extra=dev --extra=demo --strip-extras --output-file=requirements/dev.lock pyproject.toml
+```
+
+Continuous integration audits that lockfile only (`pip-audit --requirement requirements/dev.lock --disable-pip --no-deps`), not the machine's other packages. Hypothesis is capped below 6.169 so the same dev extra still installs on Python 3.10.

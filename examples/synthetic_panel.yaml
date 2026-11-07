@@ -105,9 +105,6 @@ evaluation:
     - train
     - validation
     - test
-  alert:
-    cadence: every_row
-    cooldown: horizon
   plots:
     - prediction_error
     - error_by_unit

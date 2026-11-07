@@ -3,4 +3,3 @@ exclude_dirs:
   - benchmarks
 skips:
   - B101
-  - B105

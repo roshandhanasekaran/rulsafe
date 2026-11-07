@@ -23,7 +23,7 @@ def assign_splits(protocol: SplitProtocol) -> dict[SplitName, tuple[str, ...]]:
     """Assign each entity to train, validation, or final test.
 
     Args:
-        protocol: ``official_partitions``, ``global_time``, or ``group_holdout``.
+        protocol: ``official_partitions`` or ``group_holdout``. ``global_time`` is v0.2.
 
     Returns:
         Entity identifiers by split. A group appears in only one split when

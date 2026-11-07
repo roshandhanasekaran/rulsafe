@@ -99,12 +99,13 @@ MetricValue.computed(12.5).to_json()
 ## v0.1 contract
 
 - **Question.** Remaining useful life on a completed trajectory. C-MAPSS test engines are scored at the **last observation** only.
-- **Splits.** `official_partitions`, `global_time`, or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. The headline model is chosen on validation.
+- **Splits.** `official_partitions` or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. `global_time` is rejected: it is deferred to v0.2. The headline model is chosen on validation.
 - **Features.** At time `t`, a feature uses only records knowable at `t`. The default gap policy is `none`. Bounded forward fill is allowed. Linear interpolation is rejected.
 - **Preprocessing.** Clip bounds and scalers fit on the training split only, with a membership record.
 - **Baselines.** A training constant, and one histogram gradient boosting model. Persistence is rejected. Age and logistic regression are not in v0.1.
 - **Censored histories.** `censored_policy` is `reject` or `report`. `drop` and `unknown_policy: exclude_from_loss` are errors.
-- **Audit.** Statuses are `CONFIRMED`, `WARNING`, `NOT_CHECKED`, and `PASS`. A check with no finding is reported as `NOT_CHECKED`, not as a pass. Fleet alert metrics are **not covered** in v0.1 and serialise as `{"value": null, "status": "NOT_COMPUTED"}`, not as a missing key and not as zero. A metric the configuration turns off uses `"status": "DISABLED"`.
+- **Audit.** Statuses are `CONFIRMED`, `WARNING`, `NOT_CHECKED`, and `PASS`. A check with no finding is reported as `NOT_CHECKED`, not as a pass. A metric with no number serialises as `{"value": null, "status": "NOT_COMPUTED"}` or `{"value": null, "status": "DISABLED"}`. It is not stored as zero.
+- **Not in v0.1.** `global_time` and `alerts` are rejected with an error that they are deferred to v0.2. They are not dropped silently.
 
 ## Roadmap
 
@@ -122,6 +123,7 @@ MetricValue.computed(12.5).to_json()
 
 - SCANIA Component X under its official protocol (105 signal columns, CC BY 4.0 printed separately, no reconstructed hidden time-to-event on the official validation and test sets)
 - Censored fleet labels: positive, negative, and unknown, kept in the export
+- `global_time` splits
 - Fleet alert metrics: event recall, lead time, false alerts per asset-time
 - Optional industry datasets. They are not a v0.1 benchmark harness.
 

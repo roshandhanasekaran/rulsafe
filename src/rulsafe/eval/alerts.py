@@ -1,8 +1,7 @@
 """Fleet alert metrics.
 
-Alert cadence, lead time, and false alerts per asset-time are a fleet
-question. They are not a v0.1 headline. A v0.1 report that is asked for
-them must say they are not covered. It must not omit the request.
+Alert cadence, lead time, and false alerts per asset-time are deferred to
+v0.2. v0.1 rejects an alerts block in configuration instead of ignoring it.
 """
 
 from rulsafe.exceptions import not_implemented

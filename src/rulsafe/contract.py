@@ -197,8 +197,8 @@ def reject_random_split(protocol_name: str) -> str:
     normalized = protocol_name.strip().casefold()
     if normalized == _RANDOM_PROTOCOL:
         raise ConfigurationError(
-            "A random split of the panel is not allowed. Choose official_partitions, "
-            "global_time, or group_holdout."
+            "A random split of the panel is not allowed. "
+            "Choose official_partitions or group_holdout. global_time is deferred to v0.2."
         )
     return normalized
 

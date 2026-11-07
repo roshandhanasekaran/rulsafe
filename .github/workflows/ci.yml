@@ -49,6 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -56,12 +58,23 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Bandit
         run: bandit -c pyproject.toml -r src
-      - name: Dependency audit
-        run: pip-audit
-      - name: Gitleaks
+      - name: Gitleaks full history
         run: |
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" | tar -xz gitleaks
-          ./gitleaks detect --source . --redact --verbose
+          ./gitleaks detect --source . --log-opts="--all" --redact --verbose
+
+  audit-lockfile:
+    name: Audit project lockfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip "pip-audit>=2.10.1,<3"
+      - name: Audit requirements/dev.lock only
+        run: pip-audit --requirement requirements/dev.lock --disable-pip --no-deps --progress-spinner=off
 
   build:
     name: Build wheel

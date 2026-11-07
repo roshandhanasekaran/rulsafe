@@ -1,6 +1,6 @@
 """Evaluation of a frozen completed-trajectory model.
 
-Fleet alert metrics are reported as not covered in v0.1.
+Fleet alerts are deferred to v0.2 and rejected in configuration.
 """
 
 from rulsafe.eval.alerts import fleet_alert_coverage as fleet_alert_coverage

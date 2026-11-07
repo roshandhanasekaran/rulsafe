@@ -47,7 +47,7 @@ class AuditContext:
         """Store the fields a check is allowed to read.
 
         Args:
-            protocol_name: ``official_partitions``, ``global_time``, or ``group_holdout``.
+            protocol_name: ``official_partitions`` or ``group_holdout``.
             censored_policy: ``reject`` or ``report``.
         """
         self.protocol_name = protocol_name

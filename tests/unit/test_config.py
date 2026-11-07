@@ -128,7 +128,7 @@ def test_warehouse_connector_is_rejected(load_example) -> None:
         RunConfig.from_mapping(document)
 
 
-def test_group_ratios_and_global_time_order(load_example) -> None:
+def test_group_ratios_must_sum_to_one(load_example) -> None:
     document = load_example("synthetic_panel.yaml")
     split = document["split"]
     assert isinstance(split, dict)
@@ -138,12 +138,35 @@ def test_group_ratios_and_global_time_order(load_example) -> None:
     with pytest.raises(ConfigurationError, match="sum to 1"):
         RunConfig.from_mapping(document)
 
+
+def test_global_time_is_deferred_to_v02(load_example) -> None:
     document = load_example("synthetic_panel.yaml")
     document["split"] = {
         "protocol": "global_time",
-        "global_time": {"validation_start": 150, "test_start": 100},
+        "global_time": {"validation_start": 100, "test_start": 150},
     }
-    with pytest.raises(ConfigurationError, match="earlier"):
+    with pytest.raises(ConfigurationError, match=r"global_time is deferred to v0\.2"):
+        RunConfig.from_mapping(document)
+
+
+def test_alerts_are_deferred_to_v02(load_example) -> None:
+    document = load_example("synthetic_panel.yaml")
+    evaluation = document["evaluation"]
+    assert isinstance(evaluation, dict)
+    evaluation["alert"] = {"cadence": "every_row", "cooldown": "horizon"}
+    with pytest.raises(ConfigurationError, match=r"alerts are deferred to v0\.2"):
+        RunConfig.from_mapping(document)
+
+    document = load_example("synthetic_panel.yaml")
+    document["alerts"] = {"cadence": "every_row"}
+    with pytest.raises(ConfigurationError, match=r"alerts are deferred to v0\.2"):
+        RunConfig.from_mapping(document)
+
+    document = load_example("synthetic_panel.yaml")
+    evaluation = document["evaluation"]
+    assert isinstance(evaluation, dict)
+    evaluation["plots"] = ["alert_lead_times"]
+    with pytest.raises(ConfigurationError, match=r"alerts are deferred to v0\.2"):
         RunConfig.from_mapping(document)
 
 
@@ -172,22 +195,6 @@ def test_load_config_rejects_unusable_files(tmp_path: Path) -> None:
 def test_unknown_gap_policy_is_rejected() -> None:
     with pytest.raises(ConfigurationError, match="Unknown gap policy"):
         parse_gap_policy("backward")
-
-
-def test_datetime_cuts_must_be_ordered_and_consistent(load_example) -> None:
-    document = load_example("synthetic_panel.yaml")
-    signals = document["signals"]
-    assert isinstance(signals, dict)
-    signals["timestamp_type"] = "datetime"
-    document["split"] = {
-        "protocol": "global_time",
-        "global_time": {
-            "validation_start": "2024-01-02T00:00:00",
-            "test_start": "2024-01-01T00:00:00",
-        },
-    }
-    with pytest.raises(ConfigurationError, match="earlier"):
-        RunConfig.from_mapping(document)
 
 
 def test_load_config_reads_the_cmapss_example(repository_root: Path) -> None:

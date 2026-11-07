@@ -21,7 +21,9 @@ A confirmed `fail_on` check will abort training after the report is written and 
 
 `high_association_with_label` and `backend_internal_split` warn by default.
 
-Fleet alert metrics are not a v0.1 check result. In the report JSON they are not omitted and they are not zero. Each one is an object:
+`global_time` and alerts are not v0.1 features. A configuration that asks for either is rejected with an error that says they are deferred to v0.2.
+
+When a metric has no number, the report JSON does not omit it and does not store zero:
 
 ```json
 {"value": null, "status": "NOT_COMPUTED"}

@@ -15,6 +15,13 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Command-line commands for the later pipeline. `validate` and `datasets list` work. `demo cmapss` is reserved and not implemented.
 - Ruff, mypy, pytest, pre-commit, bandit, gitleaks, and pip-audit wiring.
 
+### Changed
+
+- `global_time` and alerts are rejected. The error says both are deferred to v0.2.
+- Bandit B105 is not skipped globally. The leakage status `PASS` carries a targeted `# nosec B105`.
+- Dependency audit uses `requirements/dev.lock`, resolved from the project extras in a clean virtualenv.
+- Gitleaks in CI scans the full git history.
+
 ### Not in this release
 
 - Windowing, labeling, splits, model fitting, C-MAPSS scoring, HTML or JSON reports, and dataset downloads.
