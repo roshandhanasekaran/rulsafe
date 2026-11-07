@@ -1,0 +1,110 @@
+# v0.2 sketch. rulsafe validate rejects this file on purpose.
+# SCANIA Component X is censored fleet data and is not the v0.1 demo.
+# Licence on the catalogue is CC BY 4.0. Do not re-license the files as Apache-2.0.
+# Operational readouts have 105 signal columns plus vehicle_id and time_step.
+
+project:
+  name: scania-component-x-v02-sketch
+  seed: 7
+  notes: "Not valid for v0.1. Kept so the refusal is explicit."
+
+connector:
+  type: files
+  assets: data/scania/specifications.parquet
+  signals: data/scania/operational_readouts.parquet
+  events: data/scania/events.parquet
+
+assets:
+  id_column: vehicle_id
+  extra_columns: []
+
+signals:
+  id_column: vehicle_id
+  event_time_column: time_step
+  available_at_column: null
+  timestamp_type: integer_step
+  feature_columns: auto
+  exclude_columns: []
+  frequency: null
+  gap_policy: none
+  max_gap: null
+
+events:
+  id_column: vehicle_id
+  event_time_column: event_time
+  available_at_column: null
+  type_column: event_type
+  terminal_types:
+    - repair
+  competing_types:
+    - preventive_replacement
+    - fleet_exit
+  forbidden_as_features:
+    - repair_reason
+
+contract:
+  observation_start_column: null
+  observation_end_column: null
+  replacement_starts_new_episode: true
+  replacement_types:
+    - replacement
+    - preventive_replacement
+
+labeling:
+  task: scania_five_class_last_readout
+  horizon: null
+  unit: steps
+  censored_policy: report
+
+windows:
+  lookback: 16
+  stride: 1
+  discard_straddle_split: true
+
+split:
+  protocol: official_partitions
+  official_partitions:
+    train_ids: data/scania/train_ids.txt
+    validation_ids: data/scania/validation_ids.txt
+    test_ids: data/scania/test_ids.txt
+
+preprocessing:
+  clip_percentiles: [1, 99]
+  scaler: standard
+
+leakage:
+  fail_on:
+    - random_split
+    - future_labels
+    - future_in_features
+    - post_event_features
+    - delayed_record_leak
+    - interpolation_leak
+    - entity_leakage
+    - scaler_leakage
+    - target_in_features
+    - event_metadata_in_features
+    - silent_negative_censoring
+    - unsupported_history
+    - replacement_episode_mix
+    - test_used_for_choices
+    - official_hidden_label_reconstruction
+  warn_on:
+    - high_association_with_label
+    - backend_internal_split
+  association_warn_threshold: 0.85
+
+models:
+  include:
+    - constant
+    - hist_gradient_boosting
+
+evaluation:
+  threshold_split: validation
+
+report:
+  formats:
+    - html
+    - json
+  title: "SCANIA Component X (v0.2 sketch)"
+  output_dir: ./rulsafe-runs

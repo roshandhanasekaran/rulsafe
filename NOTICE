@@ -1,0 +1,14 @@
+RULSafe
+Copyright 2026 RULSafe contributors
+
+This product includes software developed as RULSafe, a completed-trajectory
+remaining-useful-life research toolkit.
+
+Dataset files are not included.
+
+C-MAPSS is not shipped. The NASA catalog page does not state a licence.
+A separate Zenodo record (doi:10.5281/zenodo.15346912) states CC BY 4.0
+for that record only. Those facts are not the same licence.
+
+SCANIA Component X is not shipped and is not part of v0.1. Its catalogue
+licence is CC BY 4.0. Do not re-license those files as Apache-2.0.

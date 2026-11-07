@@ -1,0 +1,146 @@
+[build-system]
+requires = ["hatchling>=1.33.0,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rulsafe"
+dynamic = ["version"]
+description = "Completed-trajectory remaining-useful-life checks with an explicit leakage audit."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "RULSafe contributors" }]
+keywords = [
+  "remaining-useful-life",
+  "cmapss",
+  "leakage",
+  "prognostics",
+  "evaluation",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Typing :: Typed",
+]
+dependencies = [
+  "pydantic>=2.14.3,<3",
+  "PyYAML>=6.0.3,<7",
+  "typer>=0.28.0,<1",
+  "rich>=15.0.0,<16",
+]
+
+[project.optional-dependencies]
+demo = [
+  "Jinja2>=3.1.6,<4",
+]
+dev = [
+  "pytest>=9.2.0,<10",
+  "pytest-cov>=7.1.0,<8",
+  "coverage>=7.16.2,<7.17",
+  "ruff>=0.17.4,<0.18",
+  "mypy>=2.4.1,<3",
+  "pre-commit>=4.6.2,<4.7",
+  "bandit[toml]>=1.9.4,<2",
+  "pip-audit>=2.10.1,<3",
+  "types-PyYAML>=6.0.12,<7",
+  "build>=1.6.1,<2",
+]
+
+[project.scripts]
+rulsafe = "rulsafe.cli:main"
+
+[tool.hatch.version]
+path = "src/rulsafe/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rulsafe"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--cov=rulsafe",
+  "--cov-report=term-missing",
+  "--cov-fail-under=90",
+  "--strict-config",
+  "--strict-markers",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["rulsafe"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 90
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise not_implemented\\(",
+  "raise NotImplementedError",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "W",
+  "I",
+  "N",
+  "D",
+  "UP",
+  "B",
+  "SIM",
+  "S",
+  "C4",
+  "PT",
+  "RUF",
+  "RET",
+  "PTH",
+  "ARG",
+]
+ignore = [
+  "D107",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "S101", "ARG"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["rulsafe"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+packages = ["rulsafe"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+pretty = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# B105 matches the leakage status PASS. That word is an audit result, not a credential.
+[tool.bandit]
+exclude_dirs = ["tests", "benchmarks"]
+skips = ["B101", "B105"]

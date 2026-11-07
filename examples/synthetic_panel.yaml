@@ -1,0 +1,121 @@
+# Synthetic completed-trajectory panel for local tests.
+# The CSV paths are not shipped in this foundation release, and validate does not open them.
+# A censored history in this panel must be reported, not dropped.
+
+project:
+  name: synthetic-completed-trajectory
+  seed: 7
+  notes: "Local synthetic files only. No data leaves this machine."
+
+connector:
+  type: files
+  assets: tests/fixtures/synthetic_panel/assets.csv
+  signals: tests/fixtures/synthetic_panel/signals.csv
+  events: tests/fixtures/synthetic_panel/events.csv
+
+assets:
+  id_column: asset_id
+  extra_columns: []
+
+signals:
+  id_column: asset_id
+  event_time_column: event_time
+  available_at_column: available_at
+  timestamp_type: integer_step
+  feature_columns:
+    - temperature
+    - pressure
+  exclude_columns: []
+  frequency: null
+  gap_policy: none
+  max_gap: null
+
+events:
+  id_column: asset_id
+  event_time_column: event_time
+  available_at_column: available_at
+  type_column: event_type
+  terminal_types:
+    - failure
+  competing_types:
+    - censored_end
+  forbidden_as_features:
+    - failure_notes
+
+contract:
+  observation_start_column: null
+  observation_end_column: null
+  replacement_starts_new_episode: true
+  replacement_types:
+    - replacement
+
+labeling:
+  task: completed_trajectory_rul
+  horizon: null
+  unit: cycles
+  censored_policy: report
+
+windows:
+  lookback: 16
+  stride: 1
+  discard_straddle_split: true
+
+split:
+  protocol: group_holdout
+  group_holdout:
+    group_column: asset_id
+    train_ratio: 0.70
+    validation_ratio: 0.15
+    test_ratio: 0.15
+
+preprocessing:
+  clip_percentiles: [1, 99]
+  scaler: standard
+
+leakage:
+  fail_on:
+    - random_split
+    - future_labels
+    - future_in_features
+    - post_event_features
+    - delayed_record_leak
+    - interpolation_leak
+    - entity_leakage
+    - scaler_leakage
+    - target_in_features
+    - event_metadata_in_features
+    - silent_negative_censoring
+    - unsupported_history
+    - replacement_episode_mix
+    - test_used_for_choices
+    - official_hidden_label_reconstruction
+  warn_on:
+    - high_association_with_label
+    - backend_internal_split
+  association_warn_threshold: 0.85
+
+models:
+  include:
+    - constant
+    - hist_gradient_boosting
+
+evaluation:
+  threshold_split: validation
+  report_split_order:
+    - train
+    - validation
+    - test
+  alert:
+    cadence: every_row
+    cooldown: horizon
+  plots:
+    - prediction_error
+    - error_by_unit
+    - history_dispositions
+
+report:
+  formats:
+    - html
+    - json
+  title: "Completed-trajectory pre-check"
+  output_dir: ./rulsafe-runs

@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+title: RULSafe
+message: Please cite this software if you use it.
+type: software
+authors:
+  - name: RULSafe contributors
+version: 0.0.1
+date-released: 2026-11-07
+license: Apache-2.0
+abstract: >-
+  Completed-trajectory remaining-useful-life checks for v0.1, with causal
+  windows, train-only preprocessing, and an audit that reports censored or
+  unsupported histories instead of dropping them. C-MAPSS FD001 is the demo.
+  SCANIA Component X is deferred to v0.2.

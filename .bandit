@@ -1,0 +1,6 @@
+exclude_dirs:
+  - tests
+  - benchmarks
+skips:
+  - B101
+  - B105
