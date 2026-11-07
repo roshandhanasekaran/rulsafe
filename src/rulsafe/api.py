@@ -165,8 +165,9 @@ def run_pipeline(config: RunConfig, output_directory: Path | None = None) -> Run
 
     Group holdout and official partition files are implemented for CSV and
     Parquet. The constant baseline and the histogram gradient boosting
-    baseline are fit on training rows only. Early stopping uses the validation
-    split. ``censored_policy`` ``report`` keeps censored histories in the JSON
+    baseline are fit on training rows only. Early stopping and model selection
+    use the validation split. The headline evaluation is the test split.
+    ``censored_policy`` ``report`` keeps censored histories in the JSON
     report and out of every split. ``reject`` writes a partial report with
     status ``FAILED`` and no metrics, then raises. C-MAPSS FD001 is fetched
     separately and is not stored in the package.

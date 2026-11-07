@@ -65,7 +65,24 @@ def test_run_pipeline_keeps_the_censored_engine(load_example, tmp_path) -> None:
     assert all(risk["asset_count"] == 1 and risk["minimum_asset_count"] == 3 for risk in risks)
     assert document["hist_gradient_boosting_early_stopping_split"] == "validation"
     assert document["tree_model_status"] == "COMPUTED"
+    assert document["selection_split"] == "validation"
+    assert document["headline_split"] == "test"
+    assert document["metric_roles"] == {
+        "validation": "used for early stopping/selection",
+        "test": "headline evaluation",
+    }
+    metrics = document["metrics"]
+    assert isinstance(metrics, dict)
+    assert metrics["validation"]["role"] == "used for early stopping/selection"
+    assert metrics["test"]["role"] == "headline evaluation"
+    assert "used for early stopping/selection" in str(document["headline_criterion"])
+    assert "headline evaluation is the test split" in str(document["headline_criterion"])
     assert "NASA score is reported and is not a gate" in str(document["headline_criterion"])
+    headline_metrics = document["headline_metrics"]
+    assert isinstance(headline_metrics, dict)
+    assert headline_metrics["split"] == "test"
+    assert headline_metrics["role"] == "headline evaluation"
+    assert headline_metrics["model"] == document["headline_model"]
     _assert_headline_follows_validation_rmse(document)
     assert result.report_paths.json_path is not None
     assert result.report_paths.json_path.is_file()
@@ -96,6 +113,22 @@ def test_reject_policy_writes_a_failed_report_then_stops(load_example, tmp_path)
     assert isinstance(violations, list)
     assert violations[0]["asset_id"] == "engine_e"
     assert violations[0]["disposition"] == "reject"
+    assert violations[0]["signal_row_count"] == 2
+    assert violations[0]["event_row_count"] == 1
+    assert violations[0]["prediction_row_count"] == 1
+    assert document["offending_asset_ids"] == ["engine_e"]
+    counts = document["offending_row_counts"]
+    assert counts == [
+        {
+            "asset_id": "engine_e",
+            "signal_row_count": 2,
+            "event_row_count": 1,
+            "prediction_row_count": 1,
+        }
+    ]
+    assert "signal_row_count=2" in str(caught.value)
+    assert "event_row_count=1" in str(caught.value)
+    assert "prediction_row_count=1" in str(caught.value)
     assert "constant_root_mean_square_error" not in report_path.read_text(encoding="utf-8")
 
 

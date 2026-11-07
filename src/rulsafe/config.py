@@ -1084,8 +1084,10 @@ class ModelsConfig(StrictConfigModel):
 class EvaluationConfig(StrictConfigModel):
     """Where the headline model is chosen, and which plots are requested.
 
-    v0.1 chooses the headline model on validation and scores the final test
-    once. An alert block is rejected. Alerts are deferred to v0.2.
+    v0.1 selects the model on validation and scores the final test once.
+    Validation metrics are used for early stopping and selection. The
+    headline evaluation is the test split. An alert block is rejected.
+    Alerts are deferred to v0.2.
 
     Attributes:
         threshold_split: Must be validation. v0.1 uses this as the choice split.

@@ -107,15 +107,18 @@ def test_data_fetch_from_file_uses_the_local_archive(
 
 
 def test_demo_synthetic_writes_the_censored_asset(tmp_path: Path) -> None:
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", UserWarning)
         result = runner.invoke(app, ["demo", "synthetic", "--output", str(tmp_path)])
     assert result.exit_code == 0
     report = (tmp_path / "report.json").read_text(encoding="utf-8")
-    assert "engine_e" in report
+    assert "unit-censored" in report
     assert "COMPUTED" in report
+    assert "headline evaluation" in report
+    assert "used for early stopping/selection" in report
     assert "hist_gradient_boosting_root_mean_square_error" in report
-    assert "below the minimum of 3" in report
+    assert "below the minimum of 3" not in report
+    assert not any(issubclass(item.category, UserWarning) for item in caught)
 
 
 def test_unknown_demo_and_dataset_are_usage_errors() -> None:

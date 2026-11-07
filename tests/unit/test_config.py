@@ -12,7 +12,16 @@ from rulsafe.models.forbid_persistence import reject_persistence_baseline
 
 def test_completed_trajectory_examples_load(load_example) -> None:
     synthetic = RunConfig.from_mapping(load_example("synthetic_panel.yaml"))
+    fleet = RunConfig.from_mapping(load_example("synthetic_fleet.yaml"))
     cmapss = RunConfig.from_mapping(load_example("cmapss_fd001_completed_trajectory.yaml"))
+    assert fleet.project.name == "synthetic-fleet"
+    assert fleet.labeling.censored_policy.value == "report"
+    assert fleet.signals.feature_columns == [
+        "temperature",
+        "pressure",
+        "vibration",
+        "flow",
+    ]
 
     assert synthetic.labeling.task.value == "completed_trajectory_rul"
     assert synthetic.labeling.censored_policy.value == "report"

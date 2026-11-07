@@ -4,8 +4,9 @@ Persistence is rejected by :func:`rulsafe.models.forbid_persistence.reject_persi
 Age and logistic regression are not v0.1 baselines. Both models that are
 fit here use the training split only. Early stopping, when the validation
 split has scored rows, uses that split and does not hold out training rows.
-The headline model is chosen on validation root-mean-square error. The final
-test is scored once and is not an argument of either fit function.
+The model is selected on validation root-mean-square error. That selection
+is optimistic. The headline evaluation is the final test, which is not an
+argument of either fit function.
 """
 
 import math

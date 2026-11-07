@@ -1,3 +1,4 @@
+# Tiny unit smoke panel. The demo fleet is examples/synthetic_fleet.yaml.
 # Synthetic completed-trajectory panel.
 # engine_e is censored. censored_policy report excludes it from every split and
 # continues. engine_a through engine_d, engine_f, and engine_g run to failure,

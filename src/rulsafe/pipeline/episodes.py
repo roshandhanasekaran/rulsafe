@@ -23,12 +23,14 @@ class Episode:
         support: Whether v0.1 can score this history.
         end_time: Failure time for a completed history, otherwise the close time.
         rows: Signal rows normalized to ``event_time``, ``available_at``, and features.
+        event_row_count: Event rows that belong to this asset.
     """
 
     asset_id: str
     support: HistorySupport
     end_time: float | None
     rows: tuple[Mapping[str, object], ...]
+    event_row_count: int
 
 
 def build_episodes(tables: LogicalTables, config: RunConfig) -> tuple[Episode, ...]:
@@ -90,6 +92,7 @@ def _episode_for_asset(
         support=support,
         end_time=end_time,
         rows=tuple(_normalize_signal(row, config) for row in signal_rows),
+        event_row_count=len(event_rows),
     )
 
 

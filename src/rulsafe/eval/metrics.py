@@ -1,10 +1,11 @@
 """Remaining-life scores by split.
 
-v0.1 reports validation and, after the headline model is frozen, the final
-test. Root-mean-square error and mean absolute error are the primary scores.
-The NASA asymmetric score is secondary: it is reported and it never chooses
-the headline model or fails a run. Official C-MAPSS numbers use the last
-observation of each test engine only.
+Validation scores are used for early stopping and for choosing the model.
+That choice is optimistic, so the headline evaluation is the final test of
+the selected model. Root-mean-square error and mean absolute error are the
+primary scores. The NASA asymmetric score is secondary: it is reported and
+it never chooses the model or fails a run. Official C-MAPSS numbers use the
+last observation of each test engine only.
 """
 
 import math
@@ -44,8 +45,8 @@ class MetricsReport:
     """Validation scores and the frozen final-test scores.
 
     Attributes:
-        validation: Scores used to choose the headline model.
-        test: Scores computed after that choice is frozen.
+        validation: Scores used for early stopping and model selection.
+        test: Headline evaluation, computed after that choice is frozen.
     """
 
     validation: SplitMetrics
@@ -141,10 +142,12 @@ def choose_headline(
     constant_validation_rmse: MetricValue,
     tree_validation_rmse: MetricValue,
 ) -> BaselineName:
-    """Choose the headline model from validation root-mean-square error only.
+    """Choose the model from validation root-mean-square error only.
 
-    Mean absolute error is reported beside it. The NASA score is not an
-    argument: a better NASA score cannot win, and a worse one cannot lose.
+    The returned model is the one whose test scores are the headline
+    evaluation. Mean absolute error is reported beside the selection score.
+    The NASA score is not an argument: a better NASA score cannot win, and
+    a worse one cannot lose. The test split is not an argument.
 
     Args:
         constant_validation_rmse: Constant model on the validation split.

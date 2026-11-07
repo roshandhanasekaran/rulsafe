@@ -280,19 +280,7 @@ def _stop_when_censored_histories_are_rejected(
     ]
     if not rejected:
         return
-    violations = [
-        {
-            "asset_id": episode.asset_id,
-            "support": episode.support.value,
-            "disposition": disposition.value,
-            "code": "censored_or_unsupported_history",
-            "message": (
-                "censored_policy reject stopped the run. "
-                "This history was not placed in a split and was not used for training."
-            ),
-        }
-        for episode, disposition in rejected
-    ]
+    violations = [_rejection_record(episode, disposition) for episode, disposition in rejected]
     document: dict[str, object] = {
         "project": config.project.name,
         "status": "FAILED",
@@ -300,6 +288,16 @@ def _stop_when_censored_histories_are_rejected(
         "asset_count": len(episodes),
         "censored_or_unsupported_asset_ids": list(censored_ids),
         "dropped_asset_ids": [],
+        "offending_asset_ids": [item["asset_id"] for item in violations],
+        "offending_row_counts": [
+            {
+                "asset_id": item["asset_id"],
+                "signal_row_count": item["signal_row_count"],
+                "event_row_count": item["event_row_count"],
+                "prediction_row_count": item["prediction_row_count"],
+            }
+            for item in violations
+        ],
         "contract_violations": violations,
         "history_dispositions": [
             {
@@ -307,6 +305,9 @@ def _stop_when_censored_histories_are_rejected(
                 "support": episode.support.value,
                 "disposition": disposition.value,
                 "used_for_training": False,
+                "signal_row_count": len(episode.rows),
+                "event_row_count": episode.event_row_count,
+                "prediction_row_count": len(_prediction_times(episode)),
                 "detail": (
                     "Rejected before any split was fit. "
                     "A censored or unsupported history is not a training row."
@@ -321,13 +322,50 @@ def _stop_when_censored_histories_are_rejected(
         "tree_model_status": None,
     }
     report_path = _write_report(document, output_directory)
-    listed = ", ".join(str(item["asset_id"]) for item in violations)
+    listed = "; ".join(
+        (
+            f"{item['asset_id']} (signal_row_count={item['signal_row_count']}, "
+            f"event_row_count={item['event_row_count']}, "
+            f"prediction_row_count={item['prediction_row_count']})"
+        )
+        for item in violations
+    )
     raise ContractError(
         "censored_policy reject stopped the run. "
         f"A partial report with status FAILED was written to {report_path}. "
-        "Censored or unsupported histories were not placed in a split "
-        f"and were not used for training: {listed}."
+        "Offending assets and row counts: "
+        f"{listed}."
     )
+
+
+def _rejection_record(episode: Episode, disposition: HistoryDisposition) -> dict[str, object]:
+    """Describe one censored or unsupported asset that stopped the run.
+
+    Args:
+        episode: History that was not placed in a split.
+        disposition: ``reject``.
+
+    Returns:
+        The asset id and the signal, event, and prediction row counts.
+    """
+    signal_row_count = len(episode.rows)
+    event_row_count = episode.event_row_count
+    prediction_row_count = len(_prediction_times(episode))
+    return {
+        "asset_id": episode.asset_id,
+        "support": episode.support.value,
+        "disposition": disposition.value,
+        "code": "censored_or_unsupported_history",
+        "signal_row_count": signal_row_count,
+        "event_row_count": event_row_count,
+        "prediction_row_count": prediction_row_count,
+        "message": (
+            "censored_policy reject stopped the run. "
+            f"Asset {episode.asset_id} was not placed in a split and was not used for training. "
+            f"signal_row_count={signal_row_count}, event_row_count={event_row_count}, "
+            f"prediction_row_count={prediction_row_count}."
+        ),
+    }
 
 
 def _labeled_rows(episodes: Sequence[Episode], config: RunConfig) -> list[dict[str, object]]:
@@ -766,8 +804,13 @@ _DISCLAIMER = (
     "Research software, not a safety-certified prognostic. "
     "A listed pass is not a guarantee that every leak was checked."
 )
+VALIDATION_METRIC_ROLE = "used for early stopping/selection"
+TEST_METRIC_ROLE = "headline evaluation"
 _HEADLINE_CRITERION = (
-    "validation root_mean_square_error. The NASA score is reported and is not a gate."
+    "The headline evaluation is the test split of the model selected on "
+    "validation root_mean_square_error. Validation metrics are "
+    f"{VALIDATION_METRIC_ROLE} and are optimistic relative to the test. "
+    "The NASA score is reported and is not a gate."
 )
 
 
@@ -871,13 +914,54 @@ def _document(
             }
             for finding in leakage.findings
         ],
+        "selection_split": "validation",
+        "headline_split": "test",
+        "metric_roles": {
+            "validation": VALIDATION_METRIC_ROLE,
+            "test": TEST_METRIC_ROLE,
+        },
         "metrics": {
-            "validation": {
-                name: metric.to_dict() for name, metric in metrics.validation.values.items()
-            },
-            "test": {name: metric.to_dict() for name, metric in metrics.test.values.items()},
+            "validation": _metric_block(metrics.validation, VALIDATION_METRIC_ROLE),
+            "test": _metric_block(metrics.test, TEST_METRIC_ROLE),
         },
         "headline_model": headline.value,
         "headline_criterion": _HEADLINE_CRITERION,
+        "headline_metrics": _headline_metrics(headline, metrics.test),
         "tree_model_status": tree_status.value,
+    }
+
+
+def _metric_block(metrics: SplitMetrics, role: str) -> dict[str, object]:
+    """Label one split's scores with the role they play in the report.
+
+    Args:
+        metrics: Scores for validation or test.
+        role: ``used for early stopping/selection`` or ``headline evaluation``.
+
+    Returns:
+        The role and the metric objects.
+    """
+    block: dict[str, object] = {"role": role}
+    block.update({name: metric.to_dict() for name, metric in metrics.values.items()})
+    return block
+
+
+def _headline_metrics(headline: BaselineName, test_metrics: SplitMetrics) -> dict[str, object]:
+    """Copy the selected model's test scores into the headline block.
+
+    Args:
+        headline: Model selected on validation root-mean-square error.
+        test_metrics: Final-test scores. They were not used to choose the model.
+
+    Returns:
+        The test scores of the selected model.
+    """
+    prefix = headline.value
+    return {
+        "split": "test",
+        "role": TEST_METRIC_ROLE,
+        "model": prefix,
+        "root_mean_square_error": test_metrics.values[f"{prefix}_root_mean_square_error"].to_dict(),
+        "mean_absolute_error": test_metrics.values[f"{prefix}_mean_absolute_error"].to_dict(),
+        "nasa_score": test_metrics.values[f"{prefix}_nasa_score"].to_dict(),
     }

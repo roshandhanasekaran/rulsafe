@@ -1,6 +1,8 @@
 # Synthetic panel
 
-These fixtures are not generated yet. The later suite needs a tiny panel with no third-party data:
+This tiny panel is the unit smoke fixture. Every completed engine fails at cycle 2 and `pressure` is the cycle plus one, so it is not the demo. `rulsafe demo synthetic` uses `examples/synthetic_fleet.yaml`. The later suite still uses this panel for:
+
+
 
 - a completed trajectory that can pass the audit
 - a censored or unsupported history. `reject` stops the run with an error. `report` excludes it from every split, continues, and records it

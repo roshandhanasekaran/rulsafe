@@ -1,8 +1,8 @@
 """Train, validation, and final-test splits.
 
 ``random`` is not a protocol. ``global_time`` is deferred to v0.2.
-``group_holdout`` assigns each asset to one split. Choices, including which
-baseline is the headline, are made on validation. The final test is scored
+``group_holdout`` assigns each asset to one split. Early stopping and model
+selection use validation. The headline evaluation is the final test, scored
 once after that choice is frozen.
 """
 

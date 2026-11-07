@@ -198,7 +198,7 @@ def demo_command(
 ) -> None:
     """Run a demo.
 
-    ``synthetic`` fits the constant and tree baselines on the bundled CSV.
+    ``synthetic`` fits the constant and tree baselines on the noisy fleet.
     ``cmapss`` does the same for FD001 after ``rulsafe data fetch cmapss``
     has written the git-ignored tables. The demo does not download by itself.
     """
@@ -218,7 +218,7 @@ def demo_command(
     config_name = (
         "cmapss_fd001_completed_trajectory.yaml"
         if normalized == "cmapss"
-        else "synthetic_panel.yaml"
+        else "synthetic_fleet.yaml"
     )
     destination = output if output is not None else Path("rulsafe-runs") / normalized
     try:

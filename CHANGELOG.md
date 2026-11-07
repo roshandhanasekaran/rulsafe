@@ -32,6 +32,9 @@ Foundation release. The package installs, the v0.1 schema validates, and the com
 - Ruff's `target-version` is `py311`.
 - `scikit-learn` and `pyarrow` are runtime dependencies. The hashed locks for Python 3.11, 3.12, and 3.13 include them. `pyarrow` is pinned at 23.0.1 or newer so the lock is clear of PYSEC-2026-113.
 - `rulsafe data fetch cmapss` downloads the NASA Prognostics outer zip, checks the pinned outer and inner SHA-256 values, and writes git-ignored FD001 Parquet tables. `--from-file` accepts a local outer or inner zip. Completed training engines are split in unit-number order. NASA test engines are censored and excluded. `RUL_FD001.txt` is not a label. See [docs/cmapss-fd001.md](docs/cmapss-fd001.md).
+- `rulsafe demo synthetic` uses a deterministic noisy fleet with varied lifetimes and four drifting sensors. Every split has at least three assets. The tiny panel remains the unit smoke fixture.
+- Validation metrics are labeled `used for early stopping/selection`. The headline evaluation is the test split of the model selected on validation root-mean-square error.
+- A rejected history's partial report names the offending asset and its signal, event, and prediction row counts.
 
 ### Not in this release
 
