@@ -124,6 +124,10 @@ def test_publish_workflow_uses_release_gated_trusted_publishing(repository_root:
     assert "pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086" in publish_uses
     assert all(step["with"]["merge-multiple"] is True for step in download_steps)
     assert "artifact-ids" in workflow_text
+    assert "parse_sdist_filename" in workflow_text
+    assert "parse_wheel_filename" in workflow_text
+    assert "duplicate member paths" in workflow_text
+    assert "unexpected_types" in workflow_text
     assert "sha256sum --check" in workflow_text
     assert "ref: ${{ github.sha }}" in workflow_text
     assert "PYPI_API_TOKEN" not in workflow_text

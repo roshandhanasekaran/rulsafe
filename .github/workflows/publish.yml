@@ -114,23 +114,61 @@ jobs:
         env:
           RELEASE_DIST: ${{ runner.temp }}/rulsafe-release-dist
           RELEASE_SHA: ${{ github.sha }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           python - <<'PY'
           import os
+          import stat
           import subprocess
           import tarfile
           import zipfile
+          from email.parser import BytesParser
           from pathlib import Path
+          from pathlib import PurePosixPath
+
+          from packaging.utils import canonicalize_name
+          from packaging.utils import parse_sdist_filename
+          from packaging.utils import parse_wheel_filename
+          from packaging.version import Version
 
           dist = Path(os.environ["RELEASE_DIST"])
           release_sha = os.environ["RELEASE_SHA"]
+          expected_name = canonicalize_name("rulsafe")
+          expected_version = Version(os.environ["RELEASE_TAG"].removeprefix("v"))
           wheels = sorted(dist.glob("*.whl"))
           sdists = sorted(dist.glob("*.tar.gz"))
           if len(wheels) != 1 or len(sdists) != 1:
               raise SystemExit(f"Expected one wheel and one sdist: {wheels=}, {sdists=}")
 
+          wheel_name, wheel_version, _, _ = parse_wheel_filename(wheels[0].name)
+          sdist_name, sdist_version = parse_sdist_filename(sdists[0].name)
+          if (wheel_name, wheel_version) != (expected_name, expected_version):
+              raise SystemExit(f"Wheel filename does not match release: {wheels[0].name}")
+          if (sdist_name, sdist_version) != (expected_name, expected_version):
+              raise SystemExit(f"Sdist filename does not match release: {sdists[0].name}")
+
           with zipfile.ZipFile(wheels[0]) as archive:
-              wheel_names = archive.namelist()
+              wheel_members = archive.infolist()
+              wheel_names = [member.filename for member in wheel_members]
+              if len(wheel_names) != len(set(wheel_names)):
+                  raise SystemExit("Wheel contains duplicate member paths")
+              unsafe_wheel = [
+                  name
+                  for name in wheel_names
+                  if PurePosixPath(name).is_absolute()
+                  or ".." in PurePosixPath(name).parts
+              ]
+              symlink_wheel = [
+                  member.filename
+                  for member in wheel_members
+                  if stat.S_ISLNK(member.external_attr >> 16)
+              ]
+              metadata_names = [
+                  name for name in wheel_names if name.endswith(".dist-info/METADATA")
+              ]
+              if len(metadata_names) != 1:
+                  raise SystemExit(f"Expected one wheel METADATA file: {metadata_names}")
+              wheel_metadata = BytesParser().parsebytes(archive.read(metadata_names[0]))
           forbidden_wheel = [
               name
               for name in wheel_names
@@ -142,9 +180,16 @@ jobs:
               "rulsafe/demo_configs/synthetic_fleet.yaml",
           }
           missing_wheel = required_wheel - set(wheel_names)
-          if forbidden_wheel or missing_wheel:
+          wheel_metadata_identity = (
+              canonicalize_name(wheel_metadata["Name"] or ""),
+              Version(wheel_metadata["Version"] or "0"),
+          )
+          if wheel_metadata_identity != (expected_name, expected_version):
+              raise SystemExit(f"Wheel metadata does not match release: {wheel_metadata_identity}")
+          if forbidden_wheel or missing_wheel or unsafe_wheel or symlink_wheel:
               raise SystemExit(
-                  f"Invalid wheel: {forbidden_wheel=}, {missing_wheel=}"
+                  f"Invalid wheel: {forbidden_wheel=}, {missing_wheel=}, "
+                  f"{unsafe_wheel=}, {symlink_wheel=}"
               )
 
           tracked = set(
@@ -153,15 +198,51 @@ jobs:
               ).splitlines()
           )
           with tarfile.open(sdists[0]) as archive:
-              members = [member for member in archive.getmembers() if member.isfile()]
-              roots = {member.name.split("/", 1)[0] for member in members}
-              if len(roots) != 1:
+              all_members = archive.getmembers()
+              member_names = [member.name for member in all_members]
+              if len(member_names) != len(set(member_names)):
+                  raise SystemExit("Sdist contains duplicate member paths")
+              unexpected_types = [
+                  member.name
+                  for member in all_members
+                  if not member.isfile() and not member.isdir()
+              ]
+              unsafe_sdist = [
+                  name
+                  for name in member_names
+                  if PurePosixPath(name).is_absolute()
+                  or ".." in PurePosixPath(name).parts
+              ]
+              if unexpected_types or unsafe_sdist:
+                  raise SystemExit(
+                      f"Invalid sdist members: {unexpected_types=}, {unsafe_sdist=}"
+                  )
+              expected_root = f"rulsafe-{expected_version}"
+              roots = {member.name.split("/", 1)[0] for member in all_members}
+              if roots != {expected_root}:
                   raise SystemExit(f"Unexpected sdist roots: {sorted(roots)}")
-              root = roots.pop()
+              root = expected_root
+              members = [member for member in all_members if member.isfile()]
+              pkg_info_name = f"{root}/PKG-INFO"
+              pkg_info_members = [member for member in members if member.name == pkg_info_name]
+              if len(pkg_info_members) != 1:
+                  raise SystemExit(f"Expected one sdist PKG-INFO: {pkg_info_members}")
+              pkg_info_file = archive.extractfile(pkg_info_members[0])
+              if pkg_info_file is None:
+                  raise SystemExit("Could not read sdist PKG-INFO")
+              sdist_metadata = BytesParser().parsebytes(pkg_info_file.read())
+              sdist_metadata_identity = (
+                  canonicalize_name(sdist_metadata["Name"] or ""),
+                  Version(sdist_metadata["Version"] or "0"),
+              )
+              if sdist_metadata_identity != (expected_name, expected_version):
+                  raise SystemExit(
+                      f"Sdist metadata does not match release: {sdist_metadata_identity}"
+                  )
               packaged = {
                   member.name.removeprefix(f"{root}/"): member
                   for member in members
-                  if member.name != f"{root}/PKG-INFO"
+                  if member.name != pkg_info_name
               }
               if set(packaged) != tracked:
                   raise SystemExit(
