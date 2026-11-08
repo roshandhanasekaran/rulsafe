@@ -195,6 +195,51 @@ def test_alerts_are_deferred_to_v02(load_example) -> None:
         RunConfig.from_mapping(document)
 
 
+@pytest.mark.parametrize(
+    ("section_name", "field_name", "value", "message"),
+    [
+        ("assets", "extra_columns", ["manufacturer"], r"static features.*not implemented"),
+        ("signals", "timestamp_type", "datetime", r"datetime is not implemented"),
+        ("signals", "frequency", "1 hour", r"resampling is not implemented"),
+        (
+            "contract",
+            "observation_start_column",
+            "installed_at",
+            r"observation_start_column is not implemented",
+        ),
+        (
+            "contract",
+            "observation_end_column",
+            "removed_at",
+            r"observation_end_column is not implemented",
+        ),
+        (
+            "contract",
+            "replacement_starts_new_episode",
+            False,
+            r"replacement_starts_new_episode must be true",
+        ),
+        ("labeling", "horizon", 7, r"horizon is not implemented"),
+        ("evaluation", "plots", ["prediction_error"], r"plots output is not implemented"),
+        (
+            "report",
+            "formats",
+            ["html", "json", "markdown"],
+            r"Markdown report output is not implemented",
+        ),
+    ],
+)
+def test_unimplemented_config_options_are_rejected(
+    load_example, section_name: str, field_name: str, value: object, message: str
+) -> None:
+    document = load_example("synthetic_panel.yaml")
+    section = document[section_name]
+    assert isinstance(section, dict)
+    section[field_name] = value
+    with pytest.raises(ConfigurationError, match=message):
+        RunConfig.from_mapping(document)
+
+
 def test_load_config_rejects_unusable_files(tmp_path: Path) -> None:
     from rulsafe import load_config
 

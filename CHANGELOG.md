@@ -27,6 +27,11 @@ pending owner approval.
 
 ### Fixed
 
+- Reject schema options that the v0.1 runtime does not consume instead of
+  silently accepting them: static asset features, native datetimes, frequency
+  resampling, observation-bound columns, replacement episode spanning,
+  prediction horizons, plots, and Markdown output. Shipped configurations now
+  request an empty plot list until plot generation is implemented.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories

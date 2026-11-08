@@ -115,10 +115,7 @@ evaluation:
     - train
     - validation
     - test
-  plots:
-    - prediction_error
-    - error_by_unit
-    - history_dispositions
+  plots: []
   official_benchmark:
     protocol: fd001_last_observation
     rul_path: data/cmapss/fd001_official_rul.txt

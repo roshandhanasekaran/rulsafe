@@ -204,6 +204,13 @@ sanity-check baselines, audits the run, and writes reports. A confirmed
 The CLI commands `init`, `profile`, `check`, `train`, and `report` are explicit
 stubs in v0.1; use `run_pipeline` for your own data.
 
+The v0.1 schema rejects options that the runtime cannot yet honor. Static asset
+features, native datetime parsing, frequency resampling, observation-bound
+columns, a non-null prediction horizon, plot output, and Markdown reports are
+deferred. Replacement episodes must use separate IDs, with
+`replacement_starts_new_episode: true`. This prevents a configuration from
+appearing to take effect when the pipeline would otherwise ignore it.
+
 ## Example report
 
 Excerpt from an actual noisy-fleet run, omitting other fields:

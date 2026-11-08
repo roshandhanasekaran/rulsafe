@@ -112,10 +112,7 @@ evaluation:
     - train
     - validation
     - test
-  plots:
-    - prediction_error
-    - error_by_unit
-    - history_dispositions
+  plots: []
 
 report:
   formats:
