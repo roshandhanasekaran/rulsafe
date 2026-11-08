@@ -130,6 +130,9 @@ def test_publish_workflow_uses_release_gated_trusted_publishing(repository_root:
     assert "normalized path collisions" in workflow_text
     assert "unexpected_types" in workflow_text
     assert "Wheel member differs from release commit" in workflow_text
+    assert "Unexpected wheel inventory" in workflow_text
+    assert "Wheel RECORD paths do not match" in workflow_text
+    assert "Wheel METADATA and sdist PKG-INFO differ" in workflow_text
     assert "sha256sum --check" in workflow_text
     assert "ref: ${{ github.sha }}" in workflow_text
     assert "PYPI_API_TOKEN" not in workflow_text
