@@ -325,8 +325,9 @@ def _assign_split(
         Asset ids by split.
 
     Raises:
-        ConfigurationError: The selected protocol block is missing or the
-            official id files do not match the completed assets.
+        ConfigurationError: The selected protocol block is missing, the
+            grouping column is unsupported, or the official id files do
+            not match the completed assets.
     """
     protocol_name = _stored_name(config.split.protocol)
     if protocol_name == SplitProtocol.OFFICIAL_PARTITIONS.value:
@@ -342,6 +343,10 @@ def _assign_split(
     holdout = config.split.group_holdout
     if holdout is None:
         raise ConfigurationError("group_holdout requires its settings block.")
+    try:
+        holdout.require_asset_id_column(config.assets.id_column)
+    except ValueError as error:
+        raise ConfigurationError(str(error)) from error
     if protocol_name not in {SplitProtocol.GROUP_HOLDOUT.value, "random"}:
         raise ConfigurationError(f"Unknown split protocol {protocol_name}.")
     return assign_splits(

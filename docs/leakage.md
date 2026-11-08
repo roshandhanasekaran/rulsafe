@@ -34,3 +34,23 @@ A metric the configuration turns off uses `"status": "DISABLED"` and the same nu
 ## Gap policy
 
 `none` leaves missing values missing. `ffill` may fill forward only up to `max_gap`, only from a value that was already knowable, and not across a replacement or a split. Linear interpolation is a confirmed leak and is rejected in configuration.
+
+## Physical machines and repaired episodes
+
+The v0.1 group holdout splits complete Assets IDs. Its `group_column` must
+match `assets.id_column`; a different grouping column is rejected at schema
+validation and before fitting, including configurations changed with
+`model_copy`. It is never silently substituted with an episode-level split.
+
+If one physical machine has several repaired/replaced component histories,
+give each completed episode its own ID and construct `official_partitions`
+ID files from the original physical-machine mapping. Put every completed
+episode of a physical machine in the same split. Keep censored and unsupported
+histories in the input tables but outside the partition lists; they remain
+excluded and named in the report. The configuration name does not imply
+that user-supplied partitions are a sanctioned benchmark protocol.
+
+`entity_leakage` checks supplied asset/episode IDs and window membership. It
+cannot infer that different IDs describe the same physical hardware. A pass
+there does not establish independence between physical machines; the caller
+must preserve and check that mapping when constructing partition files.

@@ -878,7 +878,9 @@ class GroupHoldoutConfig(StrictConfigModel):
     """Assign whole groups to one split each.
 
     Attributes:
-        group_column: Column that defines a group, usually the asset id.
+        group_column: Must match ``assets.id_column`` in v0.1. Grouping
+            component episodes by a different physical-machine column is
+            not implemented; supply machine-preserving partition files.
         train_ratio: Share of groups in train.
         validation_ratio: Share of groups in validation.
         test_ratio: Share of groups in the final test.
@@ -898,6 +900,23 @@ class GroupHoldoutConfig(StrictConfigModel):
         """
         _require_ratio_split(self.train_ratio, self.validation_ratio, self.test_ratio)
         return self
+
+    def require_asset_id_column(self, asset_id_column: str) -> None:
+        """Reject a grouping column the v0.1 splitter cannot honor.
+
+        Args:
+            asset_id_column: Identifier column configured for the Assets table.
+
+        Raises:
+            ValueError: The requested group differs from the asset identifier.
+        """
+        if self.group_column != asset_id_column:
+            raise ValueError(
+                "v0.1 group_holdout.group_column must match assets.id_column "
+                f"({asset_id_column!r}). Grouping episodes by another column is "
+                "not implemented. Use official_partitions with every episode "
+                "of each physical machine in the same split."
+            )
 
 
 # One-asset validation and test splits are warned, not treated as a full holdout.
@@ -1310,6 +1329,8 @@ class RunConfig(StrictConfigModel):
             This configuration when the blocks agree.
         """
         _require_allowlist_is_safe(self)
+        if self.split.group_holdout is not None:
+            self.split.group_holdout.require_asset_id_column(self.assets.id_column)
         _overlap_message(
             self.events.terminal_types,
             self.contract.replacement_types,

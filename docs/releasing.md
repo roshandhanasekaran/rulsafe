@@ -16,6 +16,9 @@ only after owner review:
 4. [Physical NASA battery integration check](https://github.com/roshandhanasekaran/rulsafe/pull/4).
 5. Candidate metadata, distribution checks, private build artifacts, and this
    release procedure (the release-preparation PR).
+6. The follow-up grouping correction and independent review record: reject
+   unsupported grouping before fitting and preserve physical-machine identity
+   when supplying partitions for repaired episodes.
 
 Retarget dependent PRs as their bases merge. Do not squash a dependent base
 without preserving or rebasing its dependent commits. The final merged commit
