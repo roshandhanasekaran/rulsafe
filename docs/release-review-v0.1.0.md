@@ -147,7 +147,7 @@ the distributions, checksums, and the Python 3.12 build-lock CycloneDX SBOM.
 - Tables and downloaded archives are processed in memory. No streaming or
   arbitrary-scale performance claim is made.
 
-## Work remaining before release
+## Release completion
 
 The implementation and documentation reviews are complete, and the code-review
 and QA agents report no reproduced runtime blocker. The release gate is tied to
@@ -155,7 +155,7 @@ the exact commit approved for release: its complete CI must pass, and its wheel,
 source archive, checksums, and SBOM must be rebuilt and inspected. Any later
 commit requires those checks again.
 
-Repository visibility, the release date/tag, GitHub Release, PyPI project-name
-registration, trusted-publishing configuration, and upload remain separate
-owner decisions. None has been changed or performed. The
-[release procedure](releasing.md) records those gates.
+The owner approved release and assigned the 2026-11-08 release date.
+Repository visibility, the `v0.1.0` tag and GitHub Release, PyPI project-name
+registration, trusted-publishing configuration, and upload are account-level
+publication steps. The [release procedure](releasing.md) records those gates.
