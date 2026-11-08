@@ -1420,7 +1420,7 @@ def _document(
             validation_count=official_validation_count,
             test_count=official_test_count,
         ),
-        "secondary_evaluation": (_secondary_block(per_row_metrics) if official else None),
+        "secondary_evaluation": (_secondary_block(config, per_row_metrics) if official else None),
         "confidence_intervals": dict(intervals),
         "leakage": [
             {
@@ -1484,6 +1484,24 @@ def _official_benchmark_block(
     benchmark = config.evaluation.official_benchmark
     if benchmark is None or validation_metrics is None:
         return None
+    split_blocks: dict[str, object] = {
+        "validation": {
+            "engine_count": validation_count,
+            "source": "last pre-failure cycle of held-out training engines",
+            "role": _OFFICIAL_VALIDATION_ROLE,
+            "metrics": _metric_block(
+                validation_metrics,
+                _OFFICIAL_VALIDATION_ROLE,
+                "last pre-failure cycle of each held-out training engine",
+            ),
+        },
+        "test": {
+            "engine_count": test_count,
+            "source": "last observed cycle of each official test engine",
+            "role": TEST_METRIC_ROLE,
+            "metrics": _metric_block(test_metrics, TEST_METRIC_ROLE, _OFFICIAL_TEST_VIEW),
+        },
+    }
     return {
         "protocol": FD001_PROTOCOL_NAME,
         "role": TEST_METRIC_ROLE,
@@ -1502,29 +1520,15 @@ def _official_benchmark_block(
             "Every causal row of the held-out training engines. "
             "The official test labels are not used for early stopping or model selection."
         ),
-        "validation": {
-            "engine_count": validation_count,
-            "source": "last pre-failure cycle of held-out training engines",
-            "role": _OFFICIAL_VALIDATION_ROLE,
-            "metrics": _metric_block(
-                validation_metrics,
-                _OFFICIAL_VALIDATION_ROLE,
-                "last pre-failure cycle of each held-out training engine",
-            ),
-        },
-        "test": {
-            "engine_count": test_count,
-            "source": "last observed cycle of each official test engine",
-            "role": TEST_METRIC_ROLE,
-            "metrics": _metric_block(test_metrics, TEST_METRIC_ROLE, _OFFICIAL_TEST_VIEW),
-        },
+        **_ordered_report_mapping(config, split_blocks),
     }
 
 
-def _secondary_block(metrics: MetricsReport) -> dict[str, object]:
+def _secondary_block(config: RunConfig, metrics: MetricsReport) -> dict[str, object]:
     """Describe the per-row scores on held-out completed training engines.
 
     Args:
+        config: Validated configuration with the requested report order.
         metrics: Per-row validation and test scores.
 
     Returns:
@@ -1539,16 +1543,19 @@ def _secondary_block(metrics: MetricsReport) -> dict[str, object]:
             "per-row scores used for early stopping and selection. The test block "
             "is the secondary evaluation. Its NASA score is one Saxena term per engine."
         ),
-        "metrics": {
-            "validation": _metric_block(
-                metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
-            ),
-            "test": _metric_block(
-                metrics.test,
-                SECONDARY_METRIC_ROLE,
-                "per-row remaining life on held-out completed training engines",
-            ),
-        },
+        "metrics": _ordered_report_mapping(
+            config,
+            {
+                "validation": _metric_block(
+                    metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
+                ),
+                "test": _metric_block(
+                    metrics.test,
+                    SECONDARY_METRIC_ROLE,
+                    "per-row remaining life on held-out completed training engines",
+                ),
+            },
+        ),
     }
 
 
