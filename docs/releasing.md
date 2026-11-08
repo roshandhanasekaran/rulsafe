@@ -7,8 +7,8 @@ This procedure prepares artifacts; it does not authorize publication.
 
 ## Review the changes
 
-PRs 1–6 are merged on `main`. The following release-hardening PRs were opened
-independently from that same base so each diff can be reviewed on its own:
+PRs 1–13 are merged on private `main`. The following list records the final
+release-hardening sequence and the scope reviewed in each PR:
 
 1. [Strict runtime table contract](https://github.com/roshandhanasekaran/rulsafe/pull/7).
 2. [NASA milling physical-data smoke check](https://github.com/roshandhanasekaran/rulsafe/pull/8).
@@ -18,15 +18,12 @@ independently from that same base so each diff can be reviewed on its own:
 6. [Complete the exported report writers](https://github.com/roshandhanasekaran/rulsafe/pull/12).
 7. [Documentation consistency and final review record](https://github.com/roshandhanasekaran/rulsafe/pull/13).
 
-Review each PR and its CI before owner-approved integration. Rebase or merge
-them in the order above. Retain every overlapping `CHANGELOG.md` entry and both
-the audit-policy and report-metadata updates when resolving `README.md`. PRs 7
-and 12 also touch the import block in
-`pipeline/execute.py`; the integrated file needs PR 7's `math` import and PR
-12's removal of the unused `json` import. Run the complete matrix again on the
-resulting `main`; green checks on the independent branches do not replace that
-final integrated run. Build eventual release artifacts only from that tested
-commit.
+They were merged in the order above. Conflict resolution retained every
+overlapping `CHANGELOG.md` entry, both the audit-policy and report-metadata
+updates in `README.md`, PR 7's `math` import, and PR 12's removal of the unused
+`json` import in `pipeline/execute.py`. The complete matrix then passed on the
+integrated `main` commit. Build eventual release artifacts only from the exact
+approved commit, including any later documentation-only changes.
 
 Read the [critical review and validation record](release-review-v0.1.0.md).
 The v0.1 contract is completed-trajectory RUL. `failure_within_horizon`, native
@@ -92,7 +89,7 @@ There is no publishing job, `id-token: write` permission, or PyPI credential.
 
 The following remain separate owner-controlled release actions:
 
-- Approve and merge the reviewed PRs; confirm the final `main` commit's CI.
+- Confirm the approved final `main` commit's CI and rebuilt candidate artifacts.
 - Approve repository visibility separately, including the history and licence.
 - Confirm ownership/availability of the PyPI project name. The read-only
   `rulsafe` project lookup returned HTTP 404 on 2026-11-08; this is not a
