@@ -9,6 +9,8 @@ column map and an executable Python example.
 - [C-MAPSS FD001](cmapss-fd001.md): official protocol, source hashes, and attribution.
 - [Independent verification](../benchmarks/verification-cb1136e.md): actual
   measurements across the supported Python versions.
+- [Physical-data integration checks](../benchmarks/README.md): sources,
+  measured smoke-test outputs, and limits on what they establish.
 - [Contributing](../CONTRIBUTING.md): locked setup, tests, and review procedure.
 - [Security](../SECURITY.md) and [supply-chain decision](decisions/ADR-010-security-supply-chain.md).
 - [Release preparation](releasing.md) and [critical review](release-review-v0.1.0.md).

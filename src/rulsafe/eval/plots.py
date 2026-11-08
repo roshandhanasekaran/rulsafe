@@ -1,8 +1,6 @@
-"""Plot images embedded in the HTML report.
+"""Reserved plot-rendering interface.
 
-v0.1 plots are prediction error, error by unit, and history dispositions.
-Fleet plots may be requested. Until they exist, the report says they were
-not produced.
+The v0.1 public pipeline does not call this module or render plot images.
 """
 
 from rulsafe.config import PlotName
@@ -10,7 +8,7 @@ from rulsafe.exceptions import not_implemented
 
 
 def render_plot(plot_name: PlotName) -> bytes:
-    """Render one report plot as image bytes.
+    """Reserved entry point for future report plots.
 
     Args:
         plot_name: Plot requested in the configuration.
@@ -19,6 +17,6 @@ def render_plot(plot_name: PlotName) -> bytes:
         Image bytes suitable for embedding in a self-contained HTML file.
 
     Raises:
-        NotImplementedError: Plotting is not implemented yet.
+        NotImplementedError: Plot rendering is not implemented.
     """
     raise not_implemented("render_plot", plot_name)

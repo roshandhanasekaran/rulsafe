@@ -1,4 +1,10 @@
-"""Map physical CSV and Parquet files onto assets, signals, and events."""
+"""Logical-table container and a reserved mapping adapter.
+
+The v0.1 public pipeline loads and maps CSV/Parquet inputs in
+``rulsafe.pipeline.execute``.  ``map_files_to_logical_tables`` is an internal
+placeholder kept for a future standalone mapping API; the public pipeline does
+not call it.
+"""
 
 from dataclasses import dataclass
 
@@ -23,7 +29,7 @@ class LogicalTables:
 
 
 def map_files_to_logical_tables(config: RunConfig) -> LogicalTables:
-    """Load the configured files and name their contract columns.
+    """Reserved adapter for a future standalone file-mapping API.
 
     Args:
         config: Validated run configuration.
@@ -32,6 +38,6 @@ def map_files_to_logical_tables(config: RunConfig) -> LogicalTables:
         Assets, signals, and events using contract column names.
 
     Raises:
-        NotImplementedError: Mapping is not implemented yet.
+        NotImplementedError: This reserved adapter is not implemented.
     """
     raise not_implemented("map_files_to_logical_tables", config)

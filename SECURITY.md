@@ -5,7 +5,7 @@ RULSafe reads local CSV and Parquet files and writes a local report. It does not
 ## Supported use
 
 - This is research software, not a safety-certified prognostic. Do not use a report as a substitute for engineering judgement or an OEM procedure.
-- Keep data on the machine that runs the check. Caches, once downloads exist, belong under a directory you choose (`~/.cache/rulsafe` or `./rulsafe-runs`).
+- Keep data on the machine that runs the check. Put downloaded datasets and generated reports under a directory you control, such as `./data` and `./rulsafe-runs`.
 - Do not put secrets, access keys, or customer identifiers into YAML, HTML, or JSON reports.
 - Do not commit third-party dataset files or access keys. SCANIA is CC BY 4.0 and is not part of v0.1. The NASA C-MAPSS catalog page does not state a licence.
 
