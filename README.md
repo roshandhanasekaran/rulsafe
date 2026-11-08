@@ -19,8 +19,13 @@ found. This is research software, not a safety-certified prognostic.
 
 ## Install
 
-Use Python 3.11, 3.12, or 3.13. The release is being prepared and has not been
-published to PyPI. While the repository is private, cloning requires access:
+Use Python 3.11, 3.12, or 3.13. Once published to PyPI, install the release with:
+
+```bash
+python -m pip install rulsafe
+```
+
+To install from source:
 
 ```bash
 git clone https://github.com/roshandhanasekaran/rulsafe.git
@@ -308,7 +313,6 @@ declared observed-wear event. Its small held-out case count has the same limit.
 ## Development and release status
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), and
-[SECURITY.md](SECURITY.md), and the [release review](docs/release-review-v0.1.0.md). The repository remains private pending owner
-approval. No PyPI publication is part of release preparation.
+[SECURITY.md](SECURITY.md), and the [release review](docs/release-review-v0.1.0.md).
 
 Code licence: [Apache-2.0](LICENSE). Dataset terms remain separate.

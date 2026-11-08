@@ -1,13 +1,11 @@
 # Preparing and reviewing v0.1.0
 
-The candidate version is 0.1.0. It is **unreleased**: no tag, GitHub Release,
-PyPI/TestPyPI upload, or repository visibility change has been made.
-The repository stays private until the owner separately approves going public.
-This procedure prepares artifacts; it does not authorize publication.
+Version 0.1.0 was approved for release on 2026-11-08. This procedure records
+the review and publication controls used for the release.
 
 ## Review the changes
 
-PRs 1–13 are merged on private `main`. The following list records the final
+PRs 1–16 are merged on `main`. The following list records the final
 release-hardening sequence and the scope reviewed in each PR:
 
 1. [Strict runtime table contract](https://github.com/roshandhanasekaran/rulsafe/pull/7).
@@ -17,6 +15,9 @@ release-hardening sequence and the scope reviewed in each PR:
 5. [Make the isolated mypy pre-commit hook reproducible](https://github.com/roshandhanasekaran/rulsafe/pull/11).
 6. [Complete the exported report writers](https://github.com/roshandhanasekaran/rulsafe/pull/12).
 7. [Documentation consistency and final review record](https://github.com/roshandhanasekaran/rulsafe/pull/13).
+8. [Record the merged release candidate](https://github.com/roshandhanasekaran/rulsafe/pull/14).
+9. [Make the release gate durable](https://github.com/roshandhanasekaran/rulsafe/pull/15).
+10. [Trusted PyPI publishing](https://github.com/roshandhanasekaran/rulsafe/pull/16).
 
 They were merged in the order above. Conflict resolution retained every
 overlapping `CHANGELOG.md` entry, both the audit-policy and report-metadata
@@ -90,16 +91,15 @@ checksums and the SBOM. Its publish job has the only `id-token: write`
 permission and uses the protected `pypi` environment and a pinned trusted-
 publishing action. The repository stores no PyPI credential.
 
-## After explicit owner approval
+## Publication checklist
 
-The following remain separate owner-controlled release actions:
+The following owner-controlled release actions complete publication:
 
 - Confirm the approved final `main` commit's CI and rebuilt candidate artifacts.
 - Approve repository visibility separately, including the history and licence.
 - Confirm ownership/availability of the PyPI project name. The read-only
   `rulsafe` project lookup returned HTTP 404 on 2026-11-08; this is not a
   reservation or a guarantee the name can be registered.
-- Set an actual release date in CHANGELOG/CITATION only when releasing.
 - Configure the PyPI pending publisher for repository `rulsafe`, workflow
   `publish.yml`, and environment `pypi`. Protect that GitHub environment with
   explicit approval. Do not paste or commit publishing tokens.
@@ -107,5 +107,5 @@ The following remain separate owner-controlled release actions:
   then authorize tagging and publication as separate actions.
 
 [ADR-010](decisions/ADR-010-security-supply-chain.md) is Accepted. Its SBOM and
-trusted-publishing controls are implemented, while the environment and PyPI
-publisher configuration remain owner-controlled release gates.
+trusted-publishing controls are implemented. The environment and PyPI
+publisher remain account-level release controls.

@@ -1,7 +1,7 @@
 # v0.1.0 critical review and validation
 
-Review date: 2026-11-08. PRs 7–13 are merged into the private, unpublished
-`main` branch. The integration point `6907bb1` passed the complete local and
+Review date: 2026-11-08. PRs 7–16 are merged into the release candidate on
+`main`. The integration point `6907bb1` passed the complete local and
 GitHub Actions matrices. A separate code-review agent and QA agent inspected
 the follow-up PRs, constructed integration trees, and repeated adversarial,
 cross-version, and installed-package checks. These reviews do not replace
@@ -147,7 +147,7 @@ the distributions, checksums, and the Python 3.12 build-lock CycloneDX SBOM.
 - Tables and downloaded archives are processed in memory. No streaming or
   arbitrary-scale performance claim is made.
 
-## Work remaining before release
+## Release completion
 
 The implementation and documentation reviews are complete, and the code-review
 and QA agents report no reproduced runtime blocker. The release gate is tied to
@@ -155,7 +155,7 @@ the exact commit approved for release: its complete CI must pass, and its wheel,
 source archive, checksums, and SBOM must be rebuilt and inspected. Any later
 commit requires those checks again.
 
-Repository visibility, the release date/tag, GitHub Release, PyPI project-name
-registration, trusted-publishing configuration, and upload remain separate
-owner decisions. None has been changed or performed. The
-[release procedure](releasing.md) records those gates.
+The owner approved release and assigned the 2026-11-08 release date.
+Repository visibility, the `v0.1.0` tag and GitHub Release, PyPI project-name
+registration, trusted-publishing configuration, and upload are account-level
+publication steps. The [release procedure](releasing.md) records those gates.

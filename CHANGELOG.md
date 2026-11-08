@@ -1,14 +1,11 @@
 # Changelog
 
-## 0.1.0 — Unreleased
-
-Prepared for review; not published to PyPI. The repository remains private
-pending owner approval.
+## 0.1.0 — 2026-11-08
 
 ### Added
 
 - v0.1.0 candidate package metadata, source links, explicit Apache-2.0 licence
-  files, and matching citation version. No publication date is assigned yet.
+  files, and matching citation version.
 - CI installs the built wheel in a clean environment, runs its demos outside
   the checkout, and retains candidate distributions, checksums, and an audited
   build-environment CycloneDX SBOM as workflow artifacts. A release-only

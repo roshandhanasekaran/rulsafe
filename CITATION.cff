@@ -5,6 +5,7 @@ type: software
 authors:
   - name: RULSafe contributors
 version: 0.1.0
+date-released: 2026-11-08
 repository-code: https://github.com/roshandhanasekaran/rulsafe
 license: Apache-2.0
 abstract: >-
