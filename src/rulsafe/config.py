@@ -58,7 +58,7 @@ class LabelTask(StrEnum):
 
 
 class TimeUnit(StrEnum):
-    """Unit of ``labeling.horizon`` and alert lead time."""
+    """Unit used to describe remaining useful life in reports."""
 
     HOURS = "hours"
     DAYS = "days"
@@ -141,10 +141,9 @@ class SplitReportName(StrEnum):
 
 
 class PlotName(StrEnum):
-    """A plot the report will include once plotting exists.
+    """A reserved report plot name.
 
-    The first three are the v0.1 completed-trajectory plots. Alert plots are
-    rejected: alerts are deferred to v0.2.
+    Plot output and alerts are deferred and rejected in v0.1.
     """
 
     PREDICTION_ERROR = "prediction_error"
@@ -156,7 +155,7 @@ class PlotName(StrEnum):
 
 
 class ReportFormat(StrEnum):
-    """An output file format. HTML and JSON are required together."""
+    """An output file format. v0.1 writes HTML and JSON together."""
 
     HTML = "html"
     JSON = "json"
@@ -606,7 +605,7 @@ class AssetsConfig(StrictConfigModel):
 
     Attributes:
         id_column: Column that identifies an asset. It is never a feature.
-        extra_columns: Static columns explicitly allowlisted as features.
+        extra_columns: Reserved static-feature allowlist. Must be empty in v0.1.
     """
 
     id_column: Annotated[str, Field(min_length=1)]
@@ -615,21 +614,26 @@ class AssetsConfig(StrictConfigModel):
     @field_validator("extra_columns")
     @classmethod
     def reject_duplicate_extra_columns(cls, columns: list[str]) -> list[str]:
-        """Reject a repeated static column.
+        """Reject static asset features because v0.1 does not consume them.
 
         Args:
             columns: Allowlisted static columns.
 
         Returns:
-            The same list when every name is unique and non-empty.
+            The empty list.
 
         Raises:
-            ValueError: A name is blank or repeated.
+            ValueError: A name is blank, repeated, or requests a deferred feature.
         """
         if any(not column.strip() for column in columns):
             raise ValueError("extra_columns cannot contain an empty name.")
         if len(columns) != len(set(columns)):
             raise ValueError("extra_columns contains a duplicate.")
+        if columns:
+            raise ValueError(
+                "assets.extra_columns static features are not implemented in v0.1. "
+                "Put changing numeric features in signals.feature_columns or use an empty list."
+            )
         return columns
 
 
@@ -643,10 +647,10 @@ class SignalsConfig(StrictConfigModel):
         id_column: Asset identifier column on the signal file.
         event_time_column: Column of the time the reading happened.
         available_at_column: Column of the time the reading became knowable.
-        timestamp_type: Comparison unit for the time columns.
+        timestamp_type: Numeric comparison unit for the time columns.
         feature_columns: Explicit allowlist, or ``auto``.
         exclude_columns: Columns dropped even when ``feature_columns`` is ``auto``.
-        frequency: Reserved resampling hint. Null means no resampling.
+        frequency: Reserved resampling hint. Must be null in v0.1.
         gap_policy: ``none`` or bounded ``ffill``.
         max_gap: Largest forward fill, required only for ``ffill``.
     """
@@ -663,7 +667,7 @@ class SignalsConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def check_signals(self) -> "SignalsConfig":
-        """Check gap settings and the explicit allowlist.
+        """Check time, gap, resampling, and explicit-feature settings.
 
         Returns:
             This configuration when the signal rules hold.
@@ -672,8 +676,18 @@ class SignalsConfig(StrictConfigModel):
         _require_explicit_features_unique(self.feature_columns, self.exclude_columns)
         if self.feature_columns != "auto" and len(self.feature_columns) == 0:
             raise ValueError("feature_columns must be 'auto' or a non-empty list.")
-        if self.frequency is not None and not self.frequency.strip():
-            raise ValueError("frequency must be null or a non-empty string.")
+        if self.timestamp_type is TimestampType.DATETIME:
+            raise ValueError(
+                "signals.timestamp_type datetime is not implemented in v0.1. "
+                "Convert timestamps to numeric elapsed cycles or integer steps before running."
+            )
+        if self.frequency is not None:
+            if not self.frequency.strip():
+                raise ValueError("frequency must be null or a non-empty string.")
+            raise ValueError(
+                "signals.frequency resampling is not implemented in v0.1. "
+                "Resample before running and set frequency to null."
+            )
         return self
 
 
@@ -740,9 +754,9 @@ class ContractConfig(StrictConfigModel):
     """Episode bounds and the replacement rule.
 
     Attributes:
-        observation_start_column: Optional column for episode start.
-        observation_end_column: Optional column for episode end.
-        replacement_starts_new_episode: When true, windows cannot cross a replacement.
+        observation_start_column: Reserved episode-start column. Must be null in v0.1.
+        observation_end_column: Reserved episode-end column. Must be null in v0.1.
+        replacement_starts_new_episode: Must be true in v0.1.
         replacement_types: Event types that close the current episode.
     """
 
@@ -765,6 +779,33 @@ class ContractConfig(StrictConfigModel):
         _require_no_duplicate_strings(names, "replacement_types")
         return names
 
+    @model_validator(mode="after")
+    def reject_unimplemented_episode_options(self) -> "ContractConfig":
+        """Reject episode options the v0.1 runtime cannot honor.
+
+        Returns:
+            This configuration when it uses the implemented episode contract.
+
+        Raises:
+            ValueError: Observation bounds are set or replacements may span episodes.
+        """
+        if self.observation_start_column is not None:
+            raise ValueError(
+                "contract.observation_start_column is not implemented in v0.1. "
+                "Use one completed episode per asset ID and set it to null."
+            )
+        if self.observation_end_column is not None:
+            raise ValueError(
+                "contract.observation_end_column is not implemented in v0.1. "
+                "Use one completed episode per asset ID and set it to null."
+            )
+        if not self.replacement_starts_new_episode:
+            raise ValueError(
+                "contract.replacement_starts_new_episode must be true in v0.1. "
+                "Use a separate asset ID for each replacement episode."
+            )
+        return self
+
 
 class LabelingConfig(StrictConfigModel):
     """The v0.1 question: remaining useful life on a completed trajectory.
@@ -777,7 +818,7 @@ class LabelingConfig(StrictConfigModel):
 
     Attributes:
         task: Completed-trajectory RUL, or the C-MAPSS last-observation adapter.
-        horizon: Unused by the v0.1 tasks. A positive value is stored and not applied.
+        horizon: Reserved prediction horizon. Must be null in v0.1.
         unit: Unit of time written into the report.
         censored_policy: ``reject`` or ``report`` for histories v0.1 cannot score.
     """
@@ -820,13 +861,16 @@ class LabelingConfig(StrictConfigModel):
 
     @model_validator(mode="after")
     def check_horizon(self) -> "LabelingConfig":
-        """Reject a non-positive horizon when one is set.
+        """Reject a horizon because v0.1 does not apply one.
 
         Returns:
-            This configuration when the optional horizon is usable.
+            This configuration when horizon is null.
         """
-        if self.horizon is not None and self.horizon <= 0:
-            raise ValueError("horizon must be a positive integer when it is set.")
+        if self.horizon is not None:
+            raise ValueError(
+                "labeling.horizon is not implemented for v0.1 completed-trajectory RUL. "
+                "Set it to null; failure-within-horizon tasks are deferred to v0.2."
+            )
         return self
 
 
@@ -1041,8 +1085,9 @@ class PreprocessingConfig(StrictConfigModel):
 class LeakageConfig(StrictConfigModel):
     """Which checks abort a run, and which checks only warn.
 
-    A check listed in neither sequence is not a pass. Once the suite exists,
-    an omitted check is reported as ``NOT_CHECKED``.
+    Every v0.1 check must be assigned to exactly one list. A ``CONFIRMED``
+    ``fail_on`` finding aborts after the failed report is written. A check in
+    ``warn_on`` is still reported with its observed status but does not abort.
 
     Attributes:
         fail_on: Checks that abort training when their status is ``CONFIRMED``.
@@ -1067,6 +1112,12 @@ class LeakageConfig(StrictConfigModel):
         if overlap:
             names = ", ".join(sorted(item.value for item in overlap))
             raise ValueError(f"A check cannot be both fail_on and warn_on: {names}.")
+        missing = set(LeakageCheckId) - set(self.fail_on) - set(self.warn_on)
+        if missing:
+            names = ", ".join(sorted(item.value for item in missing))
+            raise ValueError(
+                f"Every v0.1 leakage check must be listed in fail_on or warn_on. Missing: {names}."
+            )
         return self
 
 
@@ -1077,7 +1128,7 @@ class ModelsConfig(StrictConfigModel):
     model. Persistence is rejected. Age and logistic regression are not in v0.1.
 
     Attributes:
-        include: Baseline names in report order.
+        include: Baselines to fit. The training constant is required.
     """
 
     include: Annotated[
@@ -1088,7 +1139,7 @@ class ModelsConfig(StrictConfigModel):
     @field_validator("include")
     @classmethod
     def reject_duplicate_baselines(cls, include: list[BaselineName]) -> list[BaselineName]:
-        """Reject a repeated baseline.
+        """Reject a repeated baseline or omission of the required constant.
 
         Args:
             include: Requested baselines.
@@ -1097,6 +1148,11 @@ class ModelsConfig(StrictConfigModel):
             The same list when each baseline appears once.
         """
         _require_unique(include, "baseline")
+        if BaselineName.CONSTANT not in include:
+            raise ValueError(
+                "models.include must contain constant. It is the required training-only "
+                "reference used for validation model selection."
+            )
         return include
 
 
@@ -1154,7 +1210,7 @@ class EvaluationConfig(StrictConfigModel):
     Attributes:
         threshold_split: Must be validation. v0.1 uses this as the choice split.
         report_split_order: Train, validation, and test, each once.
-        plots: Plot names to include once plotting exists.
+        plots: Reserved plot names. Must be empty in v0.1.
         official_benchmark: FD001 last-observation settings, or None.
     """
 
@@ -1166,13 +1222,7 @@ class EvaluationConfig(StrictConfigModel):
             SplitReportName.TEST,
         ]
     )
-    plots: list[PlotName] = Field(
-        default_factory=lambda: [
-            PlotName.PREDICTION_ERROR,
-            PlotName.ERROR_BY_UNIT,
-            PlotName.HISTORY_DISPOSITIONS,
-        ]
-    )
+    plots: list[PlotName] = Field(default_factory=list)
     official_benchmark: OfficialBenchmarkConfig | None = None
 
     @field_validator("report_split_order")
@@ -1193,15 +1243,20 @@ class EvaluationConfig(StrictConfigModel):
     @field_validator("plots")
     @classmethod
     def reject_duplicate_plots(cls, plots: list[PlotName]) -> list[PlotName]:
-        """Reject a repeated plot name.
+        """Reject plot output because it is not implemented in v0.1.
 
         Args:
             plots: Requested plots.
 
         Returns:
-            The same list when each plot appears once.
+            The empty list.
         """
         _require_unique(plots, "plot")
+        if plots:
+            raise ValueError(
+                "evaluation.plots output is not implemented in v0.1. "
+                "Use an empty list; report.html contains the implemented tabular results."
+            )
         return plots
 
     @model_validator(mode="before")
@@ -1235,7 +1290,7 @@ class ReportConfig(StrictConfigModel):
     """Where the run writes HTML and JSON.
 
     Attributes:
-        formats: At least ``html`` and ``json``. ``markdown`` is optional.
+        formats: Exactly ``html`` and ``json`` in v0.1.
         title: Report title.
         output_dir: Directory under which ``rulsafe-runs/<run_id>/`` is created.
     """
@@ -1247,7 +1302,7 @@ class ReportConfig(StrictConfigModel):
     @field_validator("formats")
     @classmethod
     def require_html_and_json(cls, formats: list[ReportFormat]) -> list[ReportFormat]:
-        """Require the two formats the report contract always writes.
+        """Require exactly the two formats the v0.1 runtime writes.
 
         Args:
             formats: Requested formats.
@@ -1260,6 +1315,11 @@ class ReportConfig(StrictConfigModel):
         if missing:
             names = ", ".join(sorted(item.value for item in missing))
             raise ValueError(f"report.formats must include {names}.")
+        if set(formats) != _REQUIRED_REPORT_FORMATS:
+            raise ValueError(
+                "report.formats supports only html and json in v0.1. "
+                "Markdown report output is not implemented."
+            )
         return formats
 
 

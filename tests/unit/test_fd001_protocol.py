@@ -136,6 +136,7 @@ def test_protocol_text_names_the_cap_and_the_official_truth() -> None:
 def test_html_report_escapes_text_and_states_the_disclaimer(tmp_path: Path) -> None:
     """The HTML file is self-contained and does not treat a name as markup."""
     document = {
+        "title": "Configured <report>",
         "project": "<script>alert(1)</script>",
         "status": "COMPLETED",
         "disclaimer": (
@@ -179,6 +180,7 @@ def test_html_report_escapes_text_and_states_the_disclaimer(tmp_path: Path) -> N
     html = render_html(document)
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+    assert "<title>Configured &lt;report&gt;</title>" in html
     assert "Research software" in html
     assert "not a guarantee" in html
     assert "fd001_last_observation" in html

@@ -6,6 +6,7 @@ is scored at its last observed cycle against the RUL file, and that value
 is not written into a training row.
 """
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -261,6 +262,9 @@ def _number(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         raise ConfigurationError(f"Expected a number, got {value!r}.")
     try:
-        return float(value)
+        number = float(value)
     except ValueError as error:
         raise ConfigurationError(f"Expected a number, got {value!r}.") from error
+    if not math.isfinite(number):
+        raise ConfigurationError(f"Expected a finite number, got {value!r}.")
+    return number
