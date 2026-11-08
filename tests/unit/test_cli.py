@@ -1,5 +1,6 @@
 """Command-line skeleton: help, version, schema validation, and explicit refusals."""
 
+import json
 import warnings
 from pathlib import Path
 
@@ -122,6 +123,25 @@ def test_demo_synthetic_writes_the_censored_asset(tmp_path: Path) -> None:
     assert "hist_gradient_boosting_root_mean_square_error" in report
     assert "below the minimum of 3" not in report
     assert not any(issubclass(item.category, UserWarning) for item in caught)
+
+
+def test_demos_work_without_a_checkout_in_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Installed demos use trusted configs, not a relative examples directory."""
+    monkeypatch.chdir(tmp_path)
+    examples = tmp_path / "examples"
+    examples.mkdir()
+    (examples / "synthetic_fleet.yaml").write_text("invalid: true\n", encoding="utf-8")
+    result = runner.invoke(app, ["demo", "synthetic"])
+    assert result.exit_code == 0, result.stdout
+    document = json.loads((tmp_path / "rulsafe-runs/synthetic/report.json").read_text())
+    assert document["project"] == "synthetic-fleet"
+    assert document["censored_or_unsupported_asset_ids"] == ["unit-censored"]
+    cmapss = runner.invoke(app, ["demo", "cmapss"])
+    assert cmapss.exit_code == 2
+    assert "data fetch cmapss" in cmapss.stdout
+    assert "Could not read configuration" not in cmapss.stdout
 
 
 def test_unknown_demo_and_dataset_are_usage_errors() -> None:

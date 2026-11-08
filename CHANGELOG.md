@@ -18,6 +18,10 @@ pending owner approval.
 
 ### Fixed
 
+- Installed demos resolve bundled configurations outside a source checkout.
+  Synthetic inputs are generated locally from the existing deterministic fleet;
+  no dataset files are added to the wheel. Missing FD001 tables produce the
+  documented fetch instructions instead of a missing-configuration error.
 - Cross-version metrics now reference the noisy synthetic demo fleet, whose
   measured tree test RMSE is 1.9655398693652688. The 0.00739044155925539 smoke
   panel result comes from `remaining_life = 3 - pressure` and is not a useful
