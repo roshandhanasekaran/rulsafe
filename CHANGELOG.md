@@ -31,6 +31,10 @@ pending owner approval.
 
 ### Fixed
 
+- Implement the exported JSON report writer and terminal summary. Pipeline and
+  `RunResult.save_json` output now share one strict JSON writer that rejects
+  non-finite values; terminal text removes control characters and includes
+  headline metrics, leakage evidence, excluded histories, and the HTML path.
 - HTML and JSON reports now retain the configured report title, project notes,
   label unit, timestamp type, and split order. Split-keyed JSON blocks and HTML
   metric sections follow `evaluation.report_split_order`, including failed
