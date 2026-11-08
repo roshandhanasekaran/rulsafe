@@ -53,7 +53,11 @@ CSV and Parquet are supported. The configuration calls Readings `signals`.
 Use numeric cycles or elapsed steps in a common time unit. Native calendar-date
 parsing is not implemented in this pipeline; convert dates before running it.
 Supply `available_at` when possible: this is when a record could first have
-been known, which may be later than when the measurement happened.
+been known, which may be later than when the measurement happened. Configured
+columns must exist. IDs must be non-blank, and the Assets ID must be unique.
+Times and non-blank sensor cells must be finite numbers; leave a sensor cell
+blank to represent a missing reading. `available_at` cannot precede its row's
+timestamp.
 
 Readings (`readings.csv`), showing two rows from the bundled noisy fleet with
 renamed ID and time columns:
@@ -80,6 +84,8 @@ ratio-split quickstart assumes one ID per independent physical machine.
 Keep failure notes and repair outcomes out of the sensor features. Histories
 without an observed terminal event must be rejected or reported as excluded,
 never silently treated as healthy.
+A terminal event with no reading strictly before it is also unsupported: it is
+reported and excluded instead of being counted as a completed split member.
 
 v0.1 also requires an **Assets** file listing all machine IDs, including those
 without a completed history. You can make `assets.csv` from your Readings:

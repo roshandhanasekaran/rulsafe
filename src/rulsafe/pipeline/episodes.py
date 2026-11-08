@@ -5,6 +5,7 @@ the study, censors it. The censored asset is kept and classified. It is not
 removed.
 """
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -78,9 +79,15 @@ def _episode_for_asset(
     """
     failure_time = _earliest_event_time(event_rows, config.events.terminal_types, config)
     censor_time = _earliest_event_time(event_rows, config.events.competing_types, config)
-    if failure_time is not None:
+    has_pre_failure_signal = failure_time is not None and any(
+        _signal_time(row, config) < failure_time for row in signal_rows
+    )
+    if failure_time is not None and has_pre_failure_signal:
         support = HistorySupport.COMPLETED
         end_time: float | None = failure_time
+    elif failure_time is not None:
+        support = HistorySupport.UNSUPPORTED
+        end_time = failure_time
     elif censor_time is not None:
         support = HistorySupport.CENSORED
         end_time = censor_time
@@ -147,16 +154,35 @@ def _earliest_event_time(
     wanted = {event_type.casefold() for event_type in event_types}
     times: list[float] = []
     for row in rows:
-        event_type = row.get(config.events.type_column, "").casefold()
+        event_type = row.get(config.events.type_column, "").strip().casefold()
         if event_type not in wanted:
             continue
         raw_time = row.get(config.events.event_time_column, "")
         if raw_time == "":
             raise ConfigurationError("An event row is missing its event time.")
-        times.append(float(raw_time))
+        times.append(_finite_time(raw_time, "event time"))
     if not times:
         return None
     return min(times)
+
+
+def _signal_time(row: Mapping[str, str], config: RunConfig) -> float:
+    """Return one finite signal event time."""
+    raw_time = row.get(config.signals.event_time_column, "")
+    if raw_time == "":
+        raise ConfigurationError("A signal row is missing its event time.")
+    return _finite_time(raw_time, "signal event time")
+
+
+def _finite_time(raw_time: str, label: str) -> float:
+    """Parse one finite time with a configuration-level error."""
+    try:
+        value = float(raw_time)
+    except ValueError as error:
+        raise ConfigurationError(f"A row has a non-numeric {label}.") from error
+    if not math.isfinite(value):
+        raise ConfigurationError(f"A row has a non-finite {label}.")
+    return value
 
 
 def _column_values(rows: tuple[Mapping[str, str], ...], column_name: str) -> tuple[str, ...]:

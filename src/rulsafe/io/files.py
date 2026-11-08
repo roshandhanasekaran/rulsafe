@@ -6,8 +6,10 @@ same kind of row it sees from CSV.
 """
 
 import csv
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 
 from rulsafe.contract import LogicalTableRole, table_suffix_is_supported
@@ -57,6 +59,8 @@ def load_table(path: Path, role: LogicalTableRole) -> LoadedTable:
         raise ConfigurationError(f"Could not read table file {path}.")
     try:
         text = path.read_text(encoding="utf-8")
+    except UnicodeError as error:
+        raise ConfigurationError(f"Table file {path} is not valid UTF-8.") from error
     except OSError as error:
         raise ConfigurationError(f"Could not read table file {path}.") from error
     rows = tuple(_csv_rows(text, path))
@@ -84,10 +88,15 @@ def _parquet_rows(path: Path) -> tuple[Mapping[str, str], ...]:
     except ImportError as error:
         raise ConfigurationError("Reading Parquet requires pyarrow.") from error
     try:
-        table = parquet.read_table(path)
+        parquet_file = parquet.ParquetFile(path)
+        names = list(parquet_file.schema_arrow.names)
     except Exception as error:
         raise ConfigurationError(f"Could not read table file {path}.") from error
-    names = list(table.column_names)
+    _require_valid_column_names(names, path)
+    try:
+        table = parquet_file.read()
+    except Exception as error:
+        raise ConfigurationError(f"Could not read table file {path}.") from error
     parsed: list[Mapping[str, str]] = []
     for record in table.to_pylist():
         if not isinstance(record, dict):
@@ -109,14 +118,36 @@ def _csv_rows(text: str, path: Path) -> tuple[Mapping[str, str], ...]:
         One mapping per data row.
 
     Raises:
-        ConfigurationError: The header is missing or a row is not a mapping.
+        ConfigurationError: The header is missing or ambiguous, or a row has
+            a different number of cells from the header.
     """
-    reader = csv.DictReader(text.splitlines())
-    if reader.fieldnames is None:
-        raise ConfigurationError(f"Table file {path} has no header.")
-    parsed: list[Mapping[str, str]] = []
-    for row in reader:
-        if row is None:
-            continue
-        parsed.append({str(key): "" if value is None else str(value) for key, value in row.items()})
-    return tuple(parsed)
+    try:
+        reader = csv.reader(StringIO(text, newline=""), strict=True)
+        fieldnames = next(reader, None)
+        if not fieldnames:
+            raise ConfigurationError(f"Table file {path} has no header.")
+        _require_valid_column_names(fieldnames, path)
+        parsed: list[Mapping[str, str]] = []
+        for row_number, row in enumerate(reader, start=2):
+            if not row:
+                continue
+            if len(row) != len(fieldnames):
+                raise ConfigurationError(
+                    f"Table file {path} row {row_number} has {len(row)} cells; "
+                    f"the header has {len(fieldnames)}."
+                )
+            parsed.append(dict(zip(fieldnames, row, strict=True)))
+        return tuple(parsed)
+    except csv.Error as error:
+        raise ConfigurationError(f"Could not parse CSV table file {path}.") from error
+
+
+def _require_valid_column_names(names: list[str], path: Path) -> None:
+    """Reject blank or duplicate physical column names before row mapping."""
+    if any(not name.strip() for name in names):
+        raise ConfigurationError(f"Table file {path} has a blank column name.")
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
+    if duplicates:
+        raise ConfigurationError(
+            f"Table file {path} has duplicate column names: " + ", ".join(duplicates) + "."
+        )

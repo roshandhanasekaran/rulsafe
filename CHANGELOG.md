@@ -27,12 +27,21 @@ pending owner approval.
 
 ### Fixed
 
+- Validate configured physical-table columns and cells before fitting. Missing
+  sensor columns, blank or repeated Assets IDs, malformed or non-finite numeric
+  values, and impossible `available_at` times now raise a configuration error.
+  Terminal histories with no pre-event reading are reported as unsupported,
+  and events for unregistered assets can no longer disappear from the audit.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories
   must use supplied partitions that keep every episode of a physical machine
   together; documentation now states the audit cannot infer parent hardware
   from episode IDs. Found independently by the code-review and QA agents.
+- Reject duplicate or blank physical table headers, CSV rows whose cell count
+  differs from the header, and invalid UTF-8 before any values are mapped or a
+  model is fit. Duplicate names can no longer hide an invalid identifier or
+  sensor value behind the later column.
 - Installed demos resolve bundled configurations outside a source checkout.
   Synthetic inputs are generated locally from the existing deterministic fleet;
   no dataset files are added to the wheel. Missing FD001 tables produce the
