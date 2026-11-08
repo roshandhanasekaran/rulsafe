@@ -127,7 +127,9 @@ def test_publish_workflow_uses_release_gated_trusted_publishing(repository_root:
     assert "parse_sdist_filename" in workflow_text
     assert "parse_wheel_filename" in workflow_text
     assert "duplicate member paths" in workflow_text
+    assert "normalized path collisions" in workflow_text
     assert "unexpected_types" in workflow_text
+    assert "Wheel member differs from release commit" in workflow_text
     assert "sha256sum --check" in workflow_text
     assert "ref: ${{ github.sha }}" in workflow_text
     assert "PYPI_API_TOKEN" not in workflow_text

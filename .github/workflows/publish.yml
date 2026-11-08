@@ -147,6 +147,24 @@ jobs:
           if (sdist_name, sdist_version) != (expected_name, expected_version):
               raise SystemExit(f"Sdist filename does not match release: {sdists[0].name}")
 
+          tracked = set(
+              subprocess.check_output(
+                  ["git", "ls-tree", "-r", "--name-only", release_sha], text=True
+              ).splitlines()
+          )
+          forced_wheel_sources = {
+              "rulsafe/demo_configs/cmapss_fd001_completed_trajectory.yaml": (
+                  "examples/cmapss_fd001_completed_trajectory.yaml"
+              ),
+              "rulsafe/demo_configs/synthetic_fleet.yaml": "examples/synthetic_fleet.yaml",
+          }
+          expected_wheel_sources = {
+              name.removeprefix("src/"): name
+              for name in tracked
+              if name.startswith("src/rulsafe/")
+          }
+          expected_wheel_sources.update(forced_wheel_sources)
+
           with zipfile.ZipFile(wheels[0]) as archive:
               wheel_members = archive.infolist()
               wheel_names = [member.filename for member in wheel_members]
@@ -157,6 +175,7 @@ jobs:
                   for name in wheel_names
                   if PurePosixPath(name).is_absolute()
                   or ".." in PurePosixPath(name).parts
+                  or PurePosixPath(name).as_posix() != name
               ]
               symlink_wheel = [
                   member.filename
@@ -169,6 +188,23 @@ jobs:
               if len(metadata_names) != 1:
                   raise SystemExit(f"Expected one wheel METADATA file: {metadata_names}")
               wheel_metadata = BytesParser().parsebytes(archive.read(metadata_names[0]))
+              packaged_wheel = {
+                  name for name in wheel_names if name.startswith("rulsafe/")
+              }
+              if packaged_wheel != set(expected_wheel_sources):
+                  raise SystemExit(
+                      "Wheel package file mismatch: "
+                      f"extras={sorted(packaged_wheel - set(expected_wheel_sources))}, "
+                      f"missing={sorted(set(expected_wheel_sources) - packaged_wheel)}"
+                  )
+              for wheel_path, source_path in expected_wheel_sources.items():
+                  committed = subprocess.check_output(
+                      ["git", "show", f"{release_sha}:{source_path}"]
+                  )
+                  if archive.read(wheel_path) != committed:
+                      raise SystemExit(
+                          f"Wheel member differs from release commit: {wheel_path}"
+                      )
           forbidden_wheel = [
               name
               for name in wheel_names
@@ -192,26 +228,25 @@ jobs:
                   f"{unsafe_wheel=}, {symlink_wheel=}"
               )
 
-          tracked = set(
-              subprocess.check_output(
-                  ["git", "ls-tree", "-r", "--name-only", release_sha], text=True
-              ).splitlines()
-          )
           with tarfile.open(sdists[0]) as archive:
               all_members = archive.getmembers()
               member_names = [member.name for member in all_members]
               if len(member_names) != len(set(member_names)):
                   raise SystemExit("Sdist contains duplicate member paths")
+              canonical_member_names = [PurePosixPath(name).as_posix() for name in member_names]
+              if len(canonical_member_names) != len(set(canonical_member_names)):
+                  raise SystemExit("Sdist contains normalized path collisions")
               unexpected_types = [
                   member.name
                   for member in all_members
-                  if not member.isfile() and not member.isdir()
+                  if not member.isfile()
               ]
               unsafe_sdist = [
                   name
                   for name in member_names
                   if PurePosixPath(name).is_absolute()
                   or ".." in PurePosixPath(name).parts
+                  or PurePosixPath(name).as_posix() != name
               ]
               if unexpected_types or unsafe_sdist:
                   raise SystemExit(
