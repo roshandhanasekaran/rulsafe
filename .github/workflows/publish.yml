@@ -8,14 +8,51 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and verify release
+  test:
+    name: Verify tag on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Gitleaks
+        run: bash scripts/install-gitleaks.sh
+      - name: Install the audited environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes --only-binary=:all: \
+            -r requirements/dev-${{ matrix.python-version }}.lock
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Test and audit the exact release commit
+        run: |
+          pytest
+          pip-audit \
+            --requirement requirements/dev-${{ matrix.python-version }}.lock \
+            --disable-pip --require-hashes --progress-spinner=off
+
+  build:
+    name: Build and verify release
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      distributions-artifact-id: ${{ steps.upload-distributions.outputs.artifact-id }}
+      evidence-artifact-id: ${{ steps.upload-evidence.outputs.artifact-id }}
+      wheel-sha256: ${{ steps.hashes.outputs.wheel-sha256 }}
+      sdist-sha256: ${{ steps.hashes.outputs.sdist-sha256 }}
+      sbom-sha256: ${{ steps.hashes.outputs.sbom-sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
@@ -25,104 +62,194 @@ jobs:
           python -m pip install --require-hashes --only-binary=:all: \
             -r requirements/dev-3.12.lock
           python -m pip install --no-deps --no-build-isolation -e .
-      - name: Require the tag to match the package version
+      - name: Verify release provenance and version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           python - <<'PY'
           import os
+          import subprocess
           from importlib.metadata import version
 
-          expected = f"v{version('rulsafe')}"
-          actual = os.environ["RELEASE_TAG"]
-          if actual != expected:
-              raise SystemExit(f"Release tag {actual!r} must equal {expected!r}")
+          def git(*args: str) -> str:
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+          expected_tag = f"v{version('rulsafe')}"
+          tag = os.environ["RELEASE_TAG"]
+          event_sha = os.environ["RELEASE_SHA"]
+          head = git("rev-parse", "HEAD^{commit}")
+          tag_sha = git("rev-parse", f"refs/tags/{tag}^{{commit}}")
+          if tag != expected_tag:
+              raise SystemExit(f"Release tag {tag!r} must equal {expected_tag!r}")
+          if head != event_sha or tag_sha != event_sha:
+              raise SystemExit(
+                  f"Release provenance mismatch: {head=}, {tag_sha=}, {event_sha=}"
+              )
+          subprocess.run(
+              ["git", "merge-base", "--is-ancestor", event_sha, "origin/main"],
+              check=True,
+          )
           PY
       - name: Install Gitleaks
         run: bash scripts/install-gitleaks.sh
-      - name: Verify the exact release tag
+      - name: Verify source and history
         run: |
           ruff check .
           ruff format --check .
           mypy src
           bandit -c .bandit -r src
           gitleaks detect --source . --log-opts=--all --redact --verbose --no-banner
-          pytest
-          pip-audit --requirement requirements/dev-3.12.lock \
-            --disable-pip --require-hashes --progress-spinner=off
-      - name: Build distributions
-        run: python -m build --no-isolation
-      - name: Inspect and install the wheel
+      - name: Export clean source and build distributions
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          mkdir "${RUNNER_TEMP}/rulsafe-release-source"
+          git archive --format=tar "${RELEASE_SHA}" | \
+            tar --extract --file=- --directory="${RUNNER_TEMP}/rulsafe-release-source"
+          python -m build --no-isolation \
+            --outdir "${RUNNER_TEMP}/rulsafe-release-dist" \
+            "${RUNNER_TEMP}/rulsafe-release-source"
+      - name: Compare distributions with the release commit
+        env:
+          RELEASE_DIST: ${{ runner.temp }}/rulsafe-release-dist
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           python - <<'PY'
+          import os
+          import subprocess
+          import tarfile
           import zipfile
           from pathlib import Path
 
-          wheels = sorted(Path("dist").glob("*.whl"))
-          sdists = sorted(Path("dist").glob("*.tar.gz"))
+          dist = Path(os.environ["RELEASE_DIST"])
+          release_sha = os.environ["RELEASE_SHA"]
+          wheels = sorted(dist.glob("*.whl"))
+          sdists = sorted(dist.glob("*.tar.gz"))
           if len(wheels) != 1 or len(sdists) != 1:
               raise SystemExit(f"Expected one wheel and one sdist: {wheels=}, {sdists=}")
-          names = zipfile.ZipFile(wheels[0]).namelist()
-          forbidden = [
-              name for name in names if name.endswith((".parquet", ".csv", ".zip", ".7z"))
+
+          with zipfile.ZipFile(wheels[0]) as archive:
+              wheel_names = archive.namelist()
+          forbidden_wheel = [
+              name
+              for name in wheel_names
+              if name.endswith((".parquet", ".csv", ".zip", ".7z"))
           ]
-          if forbidden:
-              raise SystemExit(f"Dataset-like files in wheel: {forbidden}")
-          required = {
+          required_wheel = {
               "rulsafe/py.typed",
               "rulsafe/demo_configs/cmapss_fd001_completed_trajectory.yaml",
               "rulsafe/demo_configs/synthetic_fleet.yaml",
           }
-          missing = required - set(names)
-          if missing:
-              raise SystemExit(f"Required wheel files are missing: {sorted(missing)}")
+          missing_wheel = required_wheel - set(wheel_names)
+          if forbidden_wheel or missing_wheel:
+              raise SystemExit(
+                  f"Invalid wheel: {forbidden_wheel=}, {missing_wheel=}"
+              )
+
+          tracked = set(
+              subprocess.check_output(
+                  ["git", "ls-tree", "-r", "--name-only", release_sha], text=True
+              ).splitlines()
+          )
+          with tarfile.open(sdists[0]) as archive:
+              members = [member for member in archive.getmembers() if member.isfile()]
+              roots = {member.name.split("/", 1)[0] for member in members}
+              if len(roots) != 1:
+                  raise SystemExit(f"Unexpected sdist roots: {sorted(roots)}")
+              root = roots.pop()
+              packaged = {
+                  member.name.removeprefix(f"{root}/"): member
+                  for member in members
+                  if member.name != f"{root}/PKG-INFO"
+              }
+              if set(packaged) != tracked:
+                  raise SystemExit(
+                      f"Sdist file mismatch: extras={sorted(set(packaged) - tracked)}, "
+                      f"missing={sorted(tracked - set(packaged))}"
+                  )
+              bad = [
+                  name
+                  for name in packaged
+                  if any(
+                      part in name
+                      for part in (
+                          ".hypothesis/",
+                          ".pytest_cache/",
+                          ".coverage",
+                          "__pycache__/",
+                          ".venv/",
+                          ".git/",
+                      )
+                  )
+              ]
+              if bad:
+                  raise SystemExit(f"Cache or environment files in sdist: {bad}")
+              for name, member in packaged.items():
+                  packaged_file = archive.extractfile(member)
+                  if packaged_file is None:
+                      raise SystemExit(f"Could not read sdist member {name}")
+                  committed = subprocess.check_output(["git", "show", f"{release_sha}:{name}"])
+                  if packaged_file.read() != committed:
+                      raise SystemExit(f"Sdist member differs from release commit: {name}")
           PY
+      - name: Install the built wheel outside the checkout
+        env:
+          RELEASE_DIST: ${{ runner.temp }}/rulsafe-release-dist
+        run: |
           python -m venv "${RUNNER_TEMP}/rulsafe-release-wheel"
           "${RUNNER_TEMP}/rulsafe-release-wheel/bin/python" -m pip install \
             --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
           "${RUNNER_TEMP}/rulsafe-release-wheel/bin/python" -m pip install \
-            --no-deps dist/*.whl
+            --no-deps "${RELEASE_DIST}"/*.whl
           "${RUNNER_TEMP}/rulsafe-release-wheel/bin/python" \
             scripts/check_installed_distribution.py
           "${RUNNER_TEMP}/rulsafe-release-wheel/bin/python" -m pip check
-      - name: Generate release evidence
+      - name: Generate release evidence and trusted hashes
+        id: hashes
+        env:
+          RELEASE_DIST: ${{ runner.temp }}/rulsafe-release-dist
+          RELEASE_EVIDENCE: ${{ runner.temp }}/rulsafe-release-evidence
         run: |
-          mkdir release-evidence
+          mkdir "${RELEASE_EVIDENCE}"
           pip-audit --requirement requirements/dev-3.12.lock \
             --disable-pip --require-hashes --progress-spinner=off \
             --format cyclonedx-json \
-            --output release-evidence/sbom-build-python-3.12.cdx.json
+            --output "${RELEASE_EVIDENCE}/sbom-build-python-3.12.cdx.json"
           python - <<'PY'
           import hashlib
+          import os
           from pathlib import Path
 
-          paths = [
-              *sorted(Path("dist").iterdir()),
-              Path("release-evidence/sbom-build-python-3.12.cdx.json"),
-          ]
-          lines = [
-              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
-              for path in paths
-              if path.is_file()
-          ]
-          Path("release-evidence/SHA256SUMS").write_text(
-              "\n".join(lines) + "\n", encoding="utf-8"
+          dist = Path(os.environ["RELEASE_DIST"])
+          evidence = Path(os.environ["RELEASE_EVIDENCE"])
+          wheel = next(dist.glob("*.whl"))
+          sdist = next(dist.glob("*.tar.gz"))
+          sbom = evidence / "sbom-build-python-3.12.cdx.json"
+          hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (wheel, sdist, sbom)}
+          (evidence / "SHA256SUMS").write_text(
+              "".join(f"{digest}  {name}\n" for name, digest in hashes.items()),
+              encoding="utf-8",
           )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"wheel-sha256={hashes[wheel.name]}\n")
+              output.write(f"sdist-sha256={hashes[sdist.name]}\n")
+              output.write(f"sbom-sha256={hashes[sbom.name]}\n")
           PY
       - name: Retain distributions for publishing
+        id: upload-distributions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: rulsafe-${{ github.event.release.tag_name }}-distributions
-          path: |
-            dist/*.whl
-            dist/*.tar.gz
+          name: rulsafe-${{ github.event.release.tag_name }}-distributions-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rulsafe-release-dist/
           if-no-files-found: error
           retention-days: 14
       - name: Retain checksums and SBOM
+        id: upload-evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: rulsafe-${{ github.event.release.tag_name }}-evidence
-          path: release-evidence/
+          name: rulsafe-${{ github.event.release.tag_name }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rulsafe-release-evidence/
           if-no-files-found: error
           retention-days: 14
 
@@ -136,11 +263,40 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Download verified distributions
+      - name: Download distributions by immutable artifact ID
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: rulsafe-${{ github.event.release.tag_name }}-distributions
+          artifact-ids: ${{ needs.build.outputs.distributions-artifact-id }}
           path: dist
+      - name: Download evidence by immutable artifact ID
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.evidence-artifact-id }}
+          path: evidence
+      - name: Fail closed on transferred files and hashes
+        env:
+          EXPECTED_SDIST_SHA256: ${{ needs.build.outputs.sdist-sha256 }}
+          EXPECTED_SBOM_SHA256: ${{ needs.build.outputs.sbom-sha256 }}
+          EXPECTED_WHEEL_SHA256: ${{ needs.build.outputs.wheel-sha256 }}
+        run: |
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          distributions=(dist/*)
+          evidence_files=(evidence/*)
+          [[ ${#wheels[@]} -eq 1 ]]
+          [[ ${#sdists[@]} -eq 1 ]]
+          [[ ${#distributions[@]} -eq 2 ]]
+          [[ ${#evidence_files[@]} -eq 2 ]]
+          [[ -f evidence/SHA256SUMS ]]
+          [[ -f evidence/sbom-build-python-3.12.cdx.json ]]
+          printf '%s  %s\n' "${EXPECTED_WHEEL_SHA256}" "${wheels[0]}" | sha256sum --check -
+          printf '%s  %s\n' "${EXPECTED_SDIST_SHA256}" "${sdists[0]}" | sha256sum --check -
+          printf '%s  %s\n' "${EXPECTED_SBOM_SHA256}" \
+            evidence/sbom-build-python-3.12.cdx.json | sha256sum --check -
+          cp "${wheels[0]}" "${sdists[0]}" evidence/
+          (cd evidence && sha256sum --check SHA256SUMS)
+          rm "evidence/$(basename "${wheels[0]}")" "evidence/$(basename "${sdists[0]}")"
       - name: Publish with a short-lived PyPI credential
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
