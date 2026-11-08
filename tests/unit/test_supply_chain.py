@@ -3,6 +3,8 @@
 import re
 from pathlib import Path
 
+import yaml
+
 _PYTHON_VERSIONS = ("3.11", "3.12", "3.13")
 
 
@@ -86,3 +88,54 @@ def test_security_decision_is_proposed_or_accepted(repository_root: Path) -> Non
     assert "trusted publishing" in text
     assert "dev-3.11.lock" in text
     assert "dev-3.10.lock" not in text
+
+
+def test_publish_workflow_uses_release_gated_trusted_publishing(repository_root: Path) -> None:
+    """Publishing is release-only, artifact-separated, and uses environment-gated OIDC."""
+    workflow_text = (repository_root / ".github" / "workflows" / "publish.yml").read_text(
+        encoding="utf-8"
+    )
+    workflow = yaml.safe_load(workflow_text)
+    assert workflow["on"] == {"release": {"types": ["published"]}}
+    assert workflow["permissions"] == {"contents": "read"}
+
+    jobs = workflow["jobs"]
+    assert set(jobs) == {"test", "build", "publish"}
+    assert jobs["test"]["strategy"]["matrix"]["python-version"] == ["3.11", "3.12", "3.13"]
+    assert jobs["build"]["needs"] == "test"
+    assert jobs["publish"]["needs"] == "build"
+    assert jobs["publish"]["environment"] == {
+        "name": "pypi",
+        "url": "https://pypi.org/p/rulsafe",
+    }
+    assert jobs["publish"]["permissions"] == {"id-token": "write"}
+
+    publish_steps = jobs["publish"]["steps"]
+    publish_uses = [step.get("uses") for step in publish_steps if "uses" in step]
+    download_steps = [
+        step
+        for step in publish_steps
+        if step.get("uses", "").startswith("actions/download-artifact@")
+    ]
+    assert (
+        publish_uses.count("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093")
+        == 2
+    )
+    assert "pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086" in publish_uses
+    assert all(step["with"]["merge-multiple"] is True for step in download_steps)
+    assert "artifact-ids" in workflow_text
+    assert "parse_sdist_filename" in workflow_text
+    assert "parse_wheel_filename" in workflow_text
+    assert "duplicate member paths" in workflow_text
+    assert "normalized path collisions" in workflow_text
+    assert "unexpected_types" in workflow_text
+    assert "Wheel member differs from release commit" in workflow_text
+    assert "Unexpected wheel inventory" in workflow_text
+    assert "Wheel RECORD paths do not match" in workflow_text
+    assert "Wheel METADATA and sdist PKG-INFO differ" in workflow_text
+    assert "independently source-built reference wheel" in workflow_text
+    assert "sha256sum --check" in workflow_text
+    assert "ref: ${{ github.sha }}" in workflow_text
+    assert "PYPI_API_TOKEN" not in workflow_text
+    assert "password:" not in workflow_text
+    assert "skip-existing" not in workflow_text

@@ -1,7 +1,7 @@
 # ADR-010: Security supply chain
 
-- **Status:** Proposed
-- **Date:** 7 November 2026 (Europe/London)
+- **Status:** Accepted
+- **Date:** 8 November 2026 (Europe/London)
 - **Spike:** SP-010
 
 ## Context
@@ -10,7 +10,10 @@ RULSafe is an Apache-2.0 Python package. v0.1 is not published to PyPI. The repo
 
 The lock used to pin versions and leave hashes off. Continuous integration then installed with `pip install -e ".[dev]"`, so the job could resolve a different set from the file `pip-audit` read. `pip-audit --disable-pip` also required `--no-deps` until every requirement had a hash.
 
-This spike compares six controls and recommends one posture. The status stays **Proposed** because two of the six (an SBOM artefact and PyPI trusted publishing) are deliberately not wired up while the package is unpublished.
+This spike compares six controls and recommends one posture. The decision is
+**Accepted** because CI retains an audited SBOM and the release workflow now
+implements environment-gated PyPI trusted publishing. Publishing still needs a
+GitHub Release and approval through the `pypi` environment.
 
 Checked on 7 November 2026 while writing this record:
 
@@ -76,7 +79,10 @@ The Packaging User Guide's current GitHub Actions flow is:
 4. Grant that publish job `id-token: write` and require manual approval on the `pypi` environment.
 5. Upload with `pypa/gh-action-pypi-publish@release/v1`, which obtains a short-lived token through GitHub's OpenID Connect provider and attaches PEP 740 attestations.
 
-A long-lived `PYPI_API_TOKEN` is the older path. This record does not add one. Publishing stays out of the repository until v0.1 is stable, which is the existing product rule. The workflow file is not added in this change.
+A long-lived `PYPI_API_TOKEN` is the older path. This record does not add one.
+`.github/workflows/publish.yml` runs only when a GitHub Release is published,
+rebuilds and verifies the tagged source in a separate job, and grants
+`id-token: write` only to the environment-gated publish job.
 
 ## Recommendation
 
@@ -101,11 +107,15 @@ Use all six, in this order of enforcement:
 - The security workflow runs gitleaks over `--log-opts=--all`.
 - Tests call the local `ruff`, `mypy`, `bandit`, and `gitleaks` binaries on a planted violation. A test that needs a download uses the `network` marker and stays out of the default run.
 
-## Still proposed
+## Implemented release controls
 
-- A release job that writes a CycloneDX JSON BOM from the lock used to build the wheel and uploads it as an artefact.
-- A publish job that uses PyPI trusted publishing, a `pypi` environment with manual approval, and `pypa/gh-action-pypi-publish@release/v1`.
-- Accepting this record. It stays **Proposed** until those two release steps exist and a maintainer marks it Accepted.
+- CI and the release workflow write a CycloneDX JSON SBOM from the audited
+  Python 3.12 build lock and retain it with checksums.
+- The release workflow separates building from publishing and uses the `pypi`
+  environment plus PyPI trusted publishing. It contains no long-lived token.
+- The publishing action and artifact-transfer actions are pinned to reviewed
+  commits. The workflow rejects a release tag that differs from the package
+  version and does not allow skipping an existing version.
 
 ## Consequences
 

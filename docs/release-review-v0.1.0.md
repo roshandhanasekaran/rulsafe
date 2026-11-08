@@ -32,7 +32,7 @@ The reviewed follow-up heads are:
 | Reports dropped declared metadata or ordering | Configured title, project notes, label unit, timestamp type, and split order did not consistently reach JSON/HTML. Nested FD001 blocks initially still used their fixed order. | Preserve the fields and apply the requested split order to top-level and nested blocks. The code-review counterexample with test before validation now passes without changing the metrics. |
 | Exported report functions were stubs | `rulsafe.report.write_json_report` and `render_terminal_summary` were public imports but raised `NotImplementedError`. | Implement one strict JSON writer used by the API and pipeline, plus a printable terminal summary. Non-finite JSON is rejected without overwriting an existing file; terminal control characters are removed. |
 | Isolated mypy hook depended on the developer environment | A cold pre-commit environment could not resolve runtime library types. | Declare scikit-learn and PyArrow in the hook environment. QA repeated the cold isolated hook; the code reviewer ran strict mypy with a fresh cache. |
-| Release metadata and evidence were incomplete | Version/citation still described the foundation; source links and installed-distribution checks were incomplete. | Prepare matching 0.1.0 metadata, Apache-2.0 files, source links, clean wheel/sdist checks, an audited SBOM, and private artifact retention. No publication is configured. |
+| Release metadata and evidence were incomplete | Version/citation still described the foundation; source links and installed-distribution checks were incomplete. | Prepare matching 0.1.0 metadata, Apache-2.0 files, source links, clean wheel/sdist checks, an audited SBOM, artifact retention, and an environment-gated trusted-publishing workflow. |
 
 ## Measured evidence
 
@@ -87,8 +87,8 @@ The reviewed follow-up heads are:
 - Fresh wheel and source artifacts built from integrated commit `6907bb1`
   passed strict Twine checks, an isolated installed-package check, `pip check`,
   and a dependency audit. Installing its source archive reproduced the tested
-  wheel byte for byte. The artifacts must be rebuilt after this documentation
-  update because it changes source-archive content.
+  wheel byte for byte. These were pre-release validation artifacts; the release
+  workflow rebuilds and checks the exact approved tag.
 - All **50** wheel code/resource files and all **118** tracked sdist files match
   integrated commit `6907bb1` byte for byte. `PKG-INFO` is the sdist's only
   generated extra; neither distribution contains downloaded dataset files.
@@ -113,10 +113,11 @@ repository and distributions.
 
 The wheel contains code, `py.typed`, two demo YAML files, package metadata,
 LICENSE, and NOTICE. The sdist contains first-party fixtures and excludes
-downloaded data, local runs, secrets, and environments. CI has `contents: read`,
-no publishing job, no PyPI token, and no OIDC write permission. Private build
-artifacts contain the distributions, checksums, and the Python 3.12 build-lock
-CycloneDX SBOM.
+downloaded data, local runs, secrets, and environments. The ordinary CI
+workflow has `contents: read` and no publishing job or OIDC write permission.
+The separate release workflow grants OIDC write permission only to its
+environment-gated publish job and stores no PyPI token. Build artifacts contain
+the distributions, checksums, and the Python 3.12 build-lock CycloneDX SBOM.
 
 ## Scope and known limits
 
