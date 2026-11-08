@@ -19,7 +19,7 @@ found. This is research software, not a safety-certified prognostic.
 
 ## Install
 
-Use Python 3.11, 3.12, or 3.13. Install the release from PyPI:
+Use Python 3.11, 3.12, or 3.13. Once published to PyPI, install the release with:
 
 ```bash
 python -m pip install rulsafe

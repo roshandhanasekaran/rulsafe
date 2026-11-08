@@ -15,8 +15,8 @@ release-hardening sequence and the scope reviewed in each PR:
 5. [Make the isolated mypy pre-commit hook reproducible](https://github.com/roshandhanasekaran/rulsafe/pull/11).
 6. [Complete the exported report writers](https://github.com/roshandhanasekaran/rulsafe/pull/12).
 7. [Documentation consistency and final review record](https://github.com/roshandhanasekaran/rulsafe/pull/13).
-8. [Release candidate supply-chain hardening](https://github.com/roshandhanasekaran/rulsafe/pull/14).
-9. [Release workflow trigger and artifact checks](https://github.com/roshandhanasekaran/rulsafe/pull/15).
+8. [Record the merged release candidate](https://github.com/roshandhanasekaran/rulsafe/pull/14).
+9. [Make the release gate durable](https://github.com/roshandhanasekaran/rulsafe/pull/15).
 10. [Trusted PyPI publishing](https://github.com/roshandhanasekaran/rulsafe/pull/16).
 
 They were merged in the order above. Conflict resolution retained every
