@@ -90,7 +90,7 @@ The reviewed follow-up heads are:
   wheel byte for byte. The artifacts must be rebuilt after this documentation
   update because it changes source-archive content.
 - All **50** wheel code/resource files and all **118** tracked sdist files match
-  the tested integration tree byte for byte. `PKG-INFO` is the sdist's only
+  integrated commit `6907bb1` byte for byte. `PKG-INFO` is the sdist's only
   generated extra; neither distribution contains downloaded dataset files.
 - Ruff, formatting, strict mypy, pre-commit, Bandit, full-history Gitleaks, and
   dependency audits for all three hashed locks pass. No advisory is ignored.
