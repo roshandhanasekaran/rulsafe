@@ -1,7 +1,7 @@
 # v0.1.0 critical review and validation
 
-Review date: 2026-11-08. PRs 7–13 are merged into the private, unpublished
-`main` branch. The integration point `6907bb1` passed the complete local and
+Review date: 2026-11-08. PRs 7–16 are merged into the release candidate on
+`main`. The integration point `6907bb1` passed the complete local and
 GitHub Actions matrices. A separate code-review agent and QA agent inspected
 the follow-up PRs, constructed integration trees, and repeated adversarial,
 cross-version, and installed-package checks. These reviews do not replace
