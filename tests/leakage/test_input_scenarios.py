@@ -65,6 +65,77 @@ def test_missing_configured_sensor_column_stops_before_fit(
         run_pipeline(config, output_directory=tmp_path / "run")
 
 
+@pytest.mark.parametrize(
+    ("table_name", "column_name", "hidden_value"),
+    [
+        ("assets", "asset_id", "unknown-physical-machine"),
+        ("signals", "temperature", "NOT_NUMERIC"),
+    ],
+)
+def test_duplicate_csv_headers_cannot_hide_invalid_values(
+    repository_root: Path,
+    load_example,
+    tmp_path: Path,
+    table_name: str,
+    column_name: str,
+    hidden_value: str,
+) -> None:
+    config = _copy_panel(repository_root, load_example, tmp_path / "duplicate-header")
+    path = Path(getattr(config.connector, table_name))
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    column_index = rows[0].index(column_name)
+    rows[0].insert(column_index, column_name)
+    for row in rows[1:]:
+        row.insert(column_index, hidden_value)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle).writerows(rows)
+
+    with pytest.raises(ConfigurationError, match=rf"duplicate column names: {column_name}"):
+        run_pipeline(config, output_directory=tmp_path / "run")
+
+
+def test_blank_csv_header_is_rejected(repository_root: Path, load_example, tmp_path: Path) -> None:
+    config = _copy_panel(repository_root, load_example, tmp_path / "blank-header")
+    path = Path(config.connector.signals)
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    rows[0][rows[0].index("temperature")] = " "
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle).writerows(rows)
+
+    with pytest.raises(ConfigurationError, match="blank column name"):
+        run_pipeline(config, output_directory=tmp_path / "run")
+
+
+@pytest.mark.parametrize("malformation", ["extra", "missing"])
+def test_csv_row_width_must_match_its_header(
+    repository_root: Path, load_example, tmp_path: Path, malformation: str
+) -> None:
+    config = _copy_panel(repository_root, load_example, tmp_path / f"row-{malformation}")
+    path = Path(config.connector.signals)
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))
+    if malformation == "extra":
+        rows[1].append("unheaded")
+    else:
+        rows[1].pop()
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle).writerows(rows)
+
+    with pytest.raises(ConfigurationError, match=r"row 2 has \d+ cells; the header has \d+"):
+        run_pipeline(config, output_directory=tmp_path / "run")
+
+
+def test_invalid_utf8_has_a_table_specific_error(
+    repository_root: Path, load_example, tmp_path: Path
+) -> None:
+    config = _copy_panel(repository_root, load_example, tmp_path / "invalid-utf8")
+    Path(config.connector.signals).write_bytes(b"\xff\xfe")
+    with pytest.raises(ConfigurationError, match=r"signals\.csv is not valid UTF-8"):
+        run_pipeline(config, output_directory=tmp_path / "run")
+
+
 def test_terminal_asset_without_pre_event_readings_is_reported_and_excluded(
     repository_root: Path, load_example, tmp_path: Path
 ) -> None:

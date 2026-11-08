@@ -38,6 +38,10 @@ pending owner approval.
   must use supplied partitions that keep every episode of a physical machine
   together; documentation now states the audit cannot infer parent hardware
   from episode IDs. Found independently by the code-review and QA agents.
+- Reject duplicate or blank physical table headers, CSV rows whose cell count
+  differs from the header, and invalid UTF-8 before any values are mapped or a
+  model is fit. Duplicate names can no longer hide an invalid identifier or
+  sensor value behind the later column.
 - Installed demos resolve bundled configurations outside a source checkout.
   Synthetic inputs are generated locally from the existing deterministic fleet;
   no dataset files are added to the wheel. Missing FD001 tables produce the
