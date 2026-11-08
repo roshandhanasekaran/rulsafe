@@ -38,11 +38,7 @@ CHANNELS = {
     "acoustic_emission_table": "AE_table",
     "acoustic_emission_spindle": "AE_spindle",
 }
-FEATURES = tuple(
-    f"{channel}_{statistic}"
-    for channel in CHANNELS
-    for statistic in ("mean", "rms")
-)
+FEATURES = tuple(f"{channel}_{statistic}" for channel in CHANNELS for statistic in ("mean", "rms"))
 
 
 def _sha256(content: bytes) -> str:
@@ -228,8 +224,7 @@ def main() -> None:
     raw["split"] = {
         "protocol": "official_partitions",
         "official_partitions": {
-            f"{name}_ids": str(inputs / f"{name}.txt")
-            for name in ("train", "validation", "test")
+            f"{name}_ids": str(inputs / f"{name}.txt") for name in ("train", "validation", "test")
         },
     }
     raw["report"]["title"] = "NASA milling physical-data smoke check"
@@ -253,9 +248,7 @@ def main() -> None:
         "risks": document["risks"],
         "leakage": document["leakage"],
     }
-    (output / "summary.json").write_text(
-        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
-    )
+    (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
 
 
