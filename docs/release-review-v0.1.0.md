@@ -28,7 +28,7 @@ The reviewed follow-up heads are:
 | Accepted configuration had no runtime effect | Several schema fields suggested support for dates, resampling, observation bounds, horizon tasks, plots, Markdown, and replacement behavior that v0.1 did not execute. Model and leakage-selection fields could also omit behavior the pipeline always relied on. | Reject the unimplemented settings, require the constant reference model, and require every leakage check to appear in exactly one of `fail_on` or `warn_on`. A confirmed warning-only finding remains visible and does not abort the run. |
 | Reports dropped declared metadata or ordering | Configured title, project notes, label unit, timestamp type, and split order did not consistently reach JSON/HTML. Nested FD001 blocks initially still used their fixed order. | Preserve the fields and apply the requested split order to top-level and nested blocks. The code-review counterexample with test before validation now passes without changing the metrics. |
 | Exported report functions were stubs | `rulsafe.report.write_json_report` and `render_terminal_summary` were public imports but raised `NotImplementedError`. | Implement one strict JSON writer used by the API and pipeline, plus a printable terminal summary. Non-finite JSON is rejected without overwriting an existing file; terminal control characters are removed. |
-| Isolated mypy hook depended on the developer environment | A cold pre-commit environment could not resolve runtime library types. | Declare scikit-learn and PyArrow in the hook environment. Both reviewers repeated a cold-cache run. |
+| Isolated mypy hook depended on the developer environment | A cold pre-commit environment could not resolve runtime library types. | Declare scikit-learn and PyArrow in the hook environment. QA repeated the cold isolated hook; the code reviewer ran strict mypy with a fresh cache. |
 | Release metadata and evidence were incomplete | Version/citation still described the foundation; source links and installed-distribution checks were incomplete. | Prepare matching 0.1.0 metadata, Apache-2.0 files, source links, clean wheel/sdist checks, an audited SBOM, and private artifact retention. No publication is configured. |
 
 ## Measured evidence
@@ -138,9 +138,8 @@ CycloneDX SBOM.
 
 The code-review and QA agents report no reproduced runtime blocker in the
 six-PR integration. The remaining engineering gate is to review and integrate
-PRs 7–13, resolve the documented import and
-changelog overlaps, and repeat the full CI and installed-artifact checks on the
-resulting `main` commit.
+PRs 7–13, resolve the documented text and import overlaps, then repeat the
+full CI and installed-artifact checks on the resulting `main` commit.
 
 Repository visibility, the release date/tag, GitHub Release, PyPI project-name
 registration, trusted-publishing configuration, and upload remain separate

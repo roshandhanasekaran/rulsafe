@@ -19,8 +19,9 @@ independently from that same base so each diff can be reviewed on its own:
 7. [Documentation consistency and final review record](https://github.com/roshandhanasekaran/rulsafe/pull/13).
 
 Review each PR and its CI before owner-approved integration. Rebase or merge
-them in the order above, resolving overlapping `CHANGELOG.md` additions by
-retaining every entry. PRs 7 and 12 also touch the import block in
+them in the order above. Retain every overlapping `CHANGELOG.md` entry and both
+the audit-policy and report-metadata updates when resolving `README.md`. PRs 7
+and 12 also touch the import block in
 `pipeline/execute.py`; the integrated file needs PR 7's `math` import and PR
 12's removal of the unused `json` import. Run the complete matrix again on the
 resulting `main`; green checks on the independent branches do not replace that
@@ -48,11 +49,13 @@ pip-audit --requirement requirements/dev-3.12.lock \
   --format cyclonedx-json --output dist/sbom-build-python-3.12.cdx.json
 ```
 
-Start with an empty `dist/` or a new checkout so older versions cannot be mixed
-into the candidate. Verify the wheel contains the typing marker, two demo YAML
-configs, LICENSE, and NOTICE, and no third-party datasets. The sdist contains
-first-party synthetic test fixtures; it must not contain downloaded NASA data,
-local runs, secrets, or environment files.
+Build from a fresh checkout of the exact approved commit and start with an
+empty `dist/`; emptying `dist/` in a worktree used for tests is not an
+equivalent release source. Verify the wheel contains the typing marker, two
+demo YAML configs, LICENSE, and NOTICE, and no third-party datasets. The sdist
+contains first-party synthetic test fixtures; reject it if it contains test
+caches such as `.hypothesis`, `.pytest_cache`, `.coverage*`, or `__pycache__`,
+or any downloaded NASA data, local runs, secrets, or environment files.
 
 Create a separate environment, install the lock and the built wheel there,
 then run its installed-package check:
