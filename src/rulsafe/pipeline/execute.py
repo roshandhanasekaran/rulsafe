@@ -417,7 +417,7 @@ def _stop_when_censored_histories_are_rejected(
         return
     violations = [_rejection_record(episode, disposition) for episode, disposition in rejected]
     document: dict[str, object] = {
-        "project": config.project.name,
+        **_report_metadata(config),
         "status": "FAILED",
         "disclaimer": _DISCLAIMER,
         "asset_count": len(episodes),
@@ -1262,6 +1262,42 @@ def _write_report(document: dict[str, object], output_directory: Path) -> Path:
     return report_path
 
 
+def _report_metadata(config: RunConfig) -> dict[str, object]:
+    """Return configured report metadata shared by complete and failed runs.
+
+    Args:
+        config: Validated run configuration.
+
+    Returns:
+        Project text, report title, time vocabulary, and requested split order.
+    """
+    return {
+        "title": config.report.title,
+        "project": config.project.name,
+        "project_notes": config.project.notes,
+        "label_unit": config.labeling.unit.value,
+        "timestamp_type": config.signals.timestamp_type.value,
+        "report_split_order": [name.value for name in config.evaluation.report_split_order],
+    }
+
+
+def _ordered_report_mapping(config: RunConfig, values: Mapping[str, object]) -> dict[str, object]:
+    """Order split-keyed report fields using ``evaluation.report_split_order``.
+
+    Args:
+        config: Validated run configuration.
+        values: Values keyed by train, validation, or test.
+
+    Returns:
+        Present values in the configured order.
+    """
+    return {
+        split_name.value: values[split_name.value]
+        for split_name in config.evaluation.report_split_order
+        if split_name.value in values
+    }
+
+
 def _document(
     config: RunConfig,
     episodes: Sequence[Episode],
@@ -1320,8 +1356,19 @@ def _document(
     official = config.evaluation.official_benchmark is not None
     rul_cap = config.target.rul_cap
     test_view = _OFFICIAL_TEST_VIEW if official else _ROW_TEST_VIEW
+    split_values: dict[str, object] = {
+        name.value: list(identifiers) for name, identifiers in split.items()
+    }
+    metric_roles: dict[str, object] = {
+        "validation": VALIDATION_METRIC_ROLE,
+        "test": TEST_METRIC_ROLE,
+    }
+    metric_values: dict[str, object] = {
+        "validation": _metric_block(metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW),
+        "test": _metric_block(metrics.test, TEST_METRIC_ROLE, test_view),
+    }
     return {
-        "project": config.project.name,
+        **_report_metadata(config),
         "status": "COMPLETED",
         "disclaimer": _DISCLAIMER,
         "asset_count": len(episodes),
@@ -1338,7 +1385,7 @@ def _document(
             }
             for episode, disposition in excluded
         ],
-        "splits": {name.value: list(identifiers) for name, identifiers in split.items()},
+        "splits": _ordered_report_mapping(config, split_values),
         "min_assets_per_split": config.split.min_assets_per_split,
         "risks": [dict(risk) for risk in risks],
         "constant_training_value": constant.constant_value,
@@ -1382,7 +1429,7 @@ def _document(
             validation_count=official_validation_count,
             test_count=official_test_count,
         ),
-        "secondary_evaluation": (_secondary_block(per_row_metrics) if official else None),
+        "secondary_evaluation": (_secondary_block(config, per_row_metrics) if official else None),
         "confidence_intervals": dict(intervals),
         "leakage": [
             {
@@ -1395,16 +1442,8 @@ def _document(
         ],
         "selection_split": "validation",
         "headline_split": "test",
-        "metric_roles": {
-            "validation": VALIDATION_METRIC_ROLE,
-            "test": TEST_METRIC_ROLE,
-        },
-        "metrics": {
-            "validation": _metric_block(
-                metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
-            ),
-            "test": _metric_block(metrics.test, TEST_METRIC_ROLE, test_view),
-        },
+        "metric_roles": _ordered_report_mapping(config, metric_roles),
+        "metrics": _ordered_report_mapping(config, metric_values),
         "headline_model": headline.value,
         "headline_criterion": _headline_criterion(official, rul_cap),
         "headline_metrics": _headline_metrics(headline, metrics.test),
@@ -1454,6 +1493,24 @@ def _official_benchmark_block(
     benchmark = config.evaluation.official_benchmark
     if benchmark is None or validation_metrics is None:
         return None
+    split_blocks: dict[str, object] = {
+        "validation": {
+            "engine_count": validation_count,
+            "source": "last pre-failure cycle of held-out training engines",
+            "role": _OFFICIAL_VALIDATION_ROLE,
+            "metrics": _metric_block(
+                validation_metrics,
+                _OFFICIAL_VALIDATION_ROLE,
+                "last pre-failure cycle of each held-out training engine",
+            ),
+        },
+        "test": {
+            "engine_count": test_count,
+            "source": "last observed cycle of each official test engine",
+            "role": TEST_METRIC_ROLE,
+            "metrics": _metric_block(test_metrics, TEST_METRIC_ROLE, _OFFICIAL_TEST_VIEW),
+        },
+    }
     return {
         "protocol": FD001_PROTOCOL_NAME,
         "role": TEST_METRIC_ROLE,
@@ -1472,29 +1529,15 @@ def _official_benchmark_block(
             "Every causal row of the held-out training engines. "
             "The official test labels are not used for early stopping or model selection."
         ),
-        "validation": {
-            "engine_count": validation_count,
-            "source": "last pre-failure cycle of held-out training engines",
-            "role": _OFFICIAL_VALIDATION_ROLE,
-            "metrics": _metric_block(
-                validation_metrics,
-                _OFFICIAL_VALIDATION_ROLE,
-                "last pre-failure cycle of each held-out training engine",
-            ),
-        },
-        "test": {
-            "engine_count": test_count,
-            "source": "last observed cycle of each official test engine",
-            "role": TEST_METRIC_ROLE,
-            "metrics": _metric_block(test_metrics, TEST_METRIC_ROLE, _OFFICIAL_TEST_VIEW),
-        },
+        **_ordered_report_mapping(config, split_blocks),
     }
 
 
-def _secondary_block(metrics: MetricsReport) -> dict[str, object]:
+def _secondary_block(config: RunConfig, metrics: MetricsReport) -> dict[str, object]:
     """Describe the per-row scores on held-out completed training engines.
 
     Args:
+        config: Validated configuration with the requested report order.
         metrics: Per-row validation and test scores.
 
     Returns:
@@ -1509,16 +1552,19 @@ def _secondary_block(metrics: MetricsReport) -> dict[str, object]:
             "per-row scores used for early stopping and selection. The test block "
             "is the secondary evaluation. Its NASA score is one Saxena term per engine."
         ),
-        "metrics": {
-            "validation": _metric_block(
-                metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
-            ),
-            "test": _metric_block(
-                metrics.test,
-                SECONDARY_METRIC_ROLE,
-                "per-row remaining life on held-out completed training engines",
-            ),
-        },
+        "metrics": _ordered_report_mapping(
+            config,
+            {
+                "validation": _metric_block(
+                    metrics.validation, VALIDATION_METRIC_ROLE, _SELECTION_VIEW
+                ),
+                "test": _metric_block(
+                    metrics.test,
+                    SECONDARY_METRIC_ROLE,
+                    "per-row remaining life on held-out completed training engines",
+                ),
+            },
+        ),
     }
 
 

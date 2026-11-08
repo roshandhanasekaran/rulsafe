@@ -31,6 +31,10 @@ pending owner approval.
 
 ### Fixed
 
+- HTML and JSON reports now retain the configured report title, project notes,
+  label unit, timestamp type, and split order. Split-keyed JSON blocks and HTML
+  metric sections follow `evaluation.report_split_order`, including failed
+  partial reports where metrics are unavailable.
 - Reject schema options that the v0.1 runtime does not consume instead of
   silently accepting them: static asset features, native datetimes, frequency
   resampling, observation-bound columns, replacement episode spanning,

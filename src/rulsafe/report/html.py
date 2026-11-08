@@ -43,13 +43,32 @@ def render_html(report_document: Mapping[str, object]) -> str:
     Returns:
         An HTML document. Dynamic text is escaped.
     """
-    title = _text(report_document.get("project"), "RULSafe report")
+    project = _text(report_document.get("project"), "RULSafe")
+    title = _text(report_document.get("title"), project)
     status = _text(report_document.get("status"), "UNKNOWN")
+    split_order = _report_split_order(report_document)
     disclaimer = _text(
         report_document.get("disclaimer"),
         "Research software, not a safety-certified prognostic. "
         "A listed pass is not a guarantee that every leak was checked.",
     )
+    metadata = [
+        ("Project", project),
+        ("Status", status),
+        ("Headline model", _text(report_document.get("headline_model"), "none")),
+        ("Headline split", _text(report_document.get("headline_split"), "none")),
+        ("RUL cap", _cap_text(report_document.get("rul_cap"))),
+        ("Selection split", _text(report_document.get("selection_split"), "none")),
+    ]
+    optional_metadata = (
+        ("Project notes", report_document.get("project_notes")),
+        ("Label unit", report_document.get("label_unit")),
+        ("Timestamp type", report_document.get("timestamp_type")),
+    )
+    metadata.extend(
+        (label, value) for label, raw_value in optional_metadata if (value := _text(raw_value, ""))
+    )
+    metadata.append(("Report split order", ", ".join(split_order)))
     parts = [
         "<!DOCTYPE html>",
         '<html lang="en">',
@@ -63,20 +82,13 @@ def render_html(report_document: Mapping[str, object]) -> str:
         "<main>",
         f"<h1>{html.escape(title)}</h1>",
         f'<div class="banner"><p>{html.escape(disclaimer)}</p></div>',
-        _definition_list(
-            [
-                ("Status", status),
-                ("Headline model", _text(report_document.get("headline_model"), "none")),
-                ("Headline split", _text(report_document.get("headline_split"), "none")),
-                ("RUL cap", _cap_text(report_document.get("rul_cap"))),
-                ("Selection split", _text(report_document.get("selection_split"), "none")),
-            ]
-        ),
+        _definition_list(metadata),
         _protocol_section(report_document),
+        _split_metrics_section(report_document.get("metrics"), split_order),
         _metrics_section("Headline metrics", report_document.get("headline_metrics")),
         _intervals_section(report_document.get("confidence_intervals")),
-        _official_section(report_document.get("official_benchmark")),
-        _secondary_section(report_document.get("secondary_evaluation")),
+        _official_section(report_document.get("official_benchmark"), split_order),
+        _secondary_section(report_document.get("secondary_evaluation"), split_order),
         _preprocessing_section(report_document),
         _leakage_section(report_document.get("leakage")),
         _violations_section(report_document.get("contract_violations")),
@@ -189,11 +201,12 @@ def _intervals_section(intervals: object) -> str:
     return "".join(blocks)
 
 
-def _official_section(official: object) -> str:
+def _official_section(official: object, split_order: Sequence[str]) -> str:
     """Render the official FD001 benchmark block.
 
     Args:
         official: The ``official_benchmark`` object, or None.
+        split_order: Configured order for any split blocks that are present.
 
     Returns:
         An HTML section, or an empty string.
@@ -207,18 +220,23 @@ def _official_section(official: object) -> str:
         f"<p>{html.escape(_text(official.get('early_stopping'), ''))}</p>",
         f"<p>RUL cap: {html.escape(_cap_text(official.get('rul_cap')))}.</p>",
     ]
-    for key, heading in (("validation", "Official-protocol validation"), ("test", "Official test")):
+    headings = {"validation": "Official-protocol validation", "test": "Official test"}
+    for key in split_order:
+        heading = headings.get(key)
+        if heading is None:
+            continue
         block = official.get(key)
         if isinstance(block, Mapping):
             parts.append(_metrics_section(heading, block.get("metrics")))
     return "".join(parts)
 
 
-def _secondary_section(secondary: object) -> str:
+def _secondary_section(secondary: object, split_order: Sequence[str]) -> str:
     """Render the per-row secondary view.
 
     Args:
         secondary: The ``secondary_evaluation`` object, or None.
+        split_order: Configured order for any split blocks that are present.
 
     Returns:
         An HTML section, or an empty string.
@@ -231,9 +249,48 @@ def _secondary_section(secondary: object) -> str:
     ]
     metrics = secondary.get("metrics")
     if isinstance(metrics, Mapping):
-        for key in ("validation", "test"):
-            parts.append(_metrics_section(f"Secondary {key}", metrics.get(key)))
+        for key in split_order:
+            if key in metrics:
+                parts.append(_metrics_section(f"Secondary {key}", metrics.get(key)))
     return "".join(parts)
+
+
+def _split_metrics_section(metrics: object, split_order: Sequence[str]) -> str:
+    """Render the main split metrics in the configured report order.
+
+    Args:
+        metrics: Mapping of split name to its metric block.
+        split_order: Configured order for any split blocks that are present.
+
+    Returns:
+        HTML sections for each available split.
+    """
+    if not isinstance(metrics, Mapping):
+        return ""
+    return "".join(
+        _metrics_section(f"{split_name.title()} split metrics", metrics.get(split_name))
+        for split_name in split_order
+        if split_name in metrics
+    )
+
+
+def _report_split_order(document: Mapping[str, object]) -> tuple[str, ...]:
+    """Read a valid report split order, with the schema default as fallback.
+
+    Args:
+        document: Report body.
+
+    Returns:
+        Train, validation, and test in the configured order.
+    """
+    default = ("train", "validation", "test")
+    raw_order = document.get("report_split_order")
+    if not isinstance(raw_order, Sequence) or isinstance(raw_order, str):
+        return default
+    order = tuple(item for item in raw_order if isinstance(item, str) and item in default)
+    if len(order) != len(default) or set(order) != set(default):
+        return default
+    return order
 
 
 def _preprocessing_section(document: Mapping[str, object]) -> str:

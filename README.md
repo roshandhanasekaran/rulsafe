@@ -207,6 +207,8 @@ names, so it does not verify that your parent-machine grouping is correct.
 sanity-check baselines, audits the run, and writes reports. A confirmed
 `fail_on` violation writes a `FAILED` report and raises `ContractError`.
 `censored_policy: reject` also writes a partial failed report with metrics null.
+Both reports retain the configured title, project notes, label unit, timestamp
+type, and split order so the artifact records how its results should be read.
 The training constant is a required reference model. Every leakage check must
 be assigned to either `fail_on` or `warn_on`; moving a check to `warn_on` makes
 its finding non-fatal but does not hide or downgrade its observed status.

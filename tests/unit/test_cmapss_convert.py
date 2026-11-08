@@ -135,6 +135,7 @@ def test_converted_fixture_runs_the_completed_trajectory_pipeline(
     assert isinstance(evaluation, dict)
     raw["evaluation"] = {
         **evaluation,
+        "report_split_order": ["test", "train", "validation"],
         "official_benchmark": {
             "protocol": "fd001_last_observation",
             "rul_path": str(tables / "fd001_official_rul.txt"),
@@ -150,12 +151,14 @@ def test_converted_fixture_runs_the_completed_trajectory_pipeline(
     assert censored == ["test-001", "test-002"]
     splits = document["splits"]
     assert isinstance(splits, dict)
+    assert list(splits) == ["test", "train", "validation"]
     assert len(splits["train"]) == 7
     assert len(splits["validation"]) == 2
     assert len(splits["test"]) == 1
     assert "test-001" not in splits["train"] + splits["validation"] + splits["test"]
     metrics = document["metrics"]
     assert isinstance(metrics, dict)
+    assert list(metrics) == ["test", "validation"]
     for split_name in ("validation", "test"):
         block = metrics[split_name]
         assert isinstance(block, dict)
@@ -176,9 +179,14 @@ def test_converted_fixture_runs_the_completed_trajectory_pipeline(
     assert isinstance(official, dict)
     assert official["protocol"] == "fd001_last_observation"
     assert official["test"]["engine_count"] == 2
+    assert [name for name in official if name in {"train", "validation", "test"}] == [
+        "test",
+        "validation",
+    ]
     secondary = document["secondary_evaluation"]
     assert isinstance(secondary, dict)
     assert secondary["role"] == "secondary"
+    assert list(secondary["metrics"]) == ["test", "validation"]
     assert "test-001" not in document["splits"]["train"]
 
 
