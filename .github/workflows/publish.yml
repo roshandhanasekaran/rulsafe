@@ -110,9 +110,13 @@ jobs:
           python -m build --no-isolation \
             --outdir "${RUNNER_TEMP}/rulsafe-release-dist" \
             "${RUNNER_TEMP}/rulsafe-release-source"
+          python -m build --wheel --no-isolation \
+            --outdir "${RUNNER_TEMP}/rulsafe-reference-wheel" \
+            "${RUNNER_TEMP}/rulsafe-release-source"
       - name: Compare distributions with the release commit
         env:
           RELEASE_DIST: ${{ runner.temp }}/rulsafe-release-dist
+          RELEASE_REFERENCE_WHEEL: ${{ runner.temp }}/rulsafe-reference-wheel
           RELEASE_SHA: ${{ github.sha }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
@@ -136,6 +140,7 @@ jobs:
           from packaging.version import Version
 
           dist = Path(os.environ["RELEASE_DIST"])
+          reference_wheel_dir = Path(os.environ["RELEASE_REFERENCE_WHEEL"])
           release_sha = os.environ["RELEASE_SHA"]
           expected_name = canonicalize_name("rulsafe")
           expected_version = Version(os.environ["RELEASE_TAG"].removeprefix("v"))
@@ -143,6 +148,13 @@ jobs:
           sdists = sorted(dist.glob("*.tar.gz"))
           if len(wheels) != 1 or len(sdists) != 1:
               raise SystemExit(f"Expected one wheel and one sdist: {wheels=}, {sdists=}")
+          reference_wheels = sorted(reference_wheel_dir.glob("*.whl"))
+          if len(reference_wheels) != 1:
+              raise SystemExit(f"Expected one source-built reference wheel: {reference_wheels}")
+          if wheels[0].read_bytes() != reference_wheels[0].read_bytes():
+              raise SystemExit(
+                  "Release wheel differs from the independently source-built reference wheel"
+              )
 
           wheel_name, wheel_version, _, _ = parse_wheel_filename(wheels[0].name)
           sdist_name, sdist_version = parse_sdist_filename(sdists[0].name)
