@@ -1,8 +1,11 @@
-"""One leakage finding.
+"""One leakage finding and a reserved generic check interface.
 
-The check functions are not implemented yet. A finding that is never written
-is not a pass; :func:`rulsafe.leakage.report.with_documented_coverage` turns
-a missing check into ``NOT_CHECKED``.
+The v0.1 pipeline runs its implemented checks from ``rulsafe.leakage.fail_on``.
+``AuditContext`` and ``run_check`` are internal placeholders for a future
+generic registry and are not called by the public pipeline. A finding that is
+never written is not a pass;
+:func:`rulsafe.leakage.report.with_documented_coverage` turns a missing check
+into ``NOT_CHECKED``.
 """
 
 from dataclasses import dataclass
@@ -36,7 +39,7 @@ class LeakageFinding:
 
 
 class AuditContext:
-    """Inputs a leakage check will receive once the pipeline exists.
+    """Inputs reserved for a future generic leakage-check registry.
 
     Attributes:
         protocol_name: Split protocol used for the run.
@@ -55,7 +58,7 @@ class AuditContext:
 
 
 def run_check(check_id: LeakageCheckId, context: AuditContext) -> LeakageFinding:
-    """Run one leakage check.
+    """Reserved entry point for a future generic leakage-check registry.
 
     Args:
         check_id: Check to run.
@@ -65,6 +68,6 @@ def run_check(check_id: LeakageCheckId, context: AuditContext) -> LeakageFinding
         The finding, with evidence and a remedy.
 
     Raises:
-        NotImplementedError: Checks are not implemented yet.
+        NotImplementedError: This reserved registry is not implemented.
     """
     raise not_implemented("run_check", check_id, context)

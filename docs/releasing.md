@@ -7,22 +7,26 @@ This procedure prepares artifacts; it does not authorize publication.
 
 ## Review the changes
 
-The PRs are stacked so each diff stays focused. Review and merge them in order
-only after owner review:
+PRs 1–6 are merged on `main`. The following release-hardening PRs were opened
+independently from that same base so each diff can be reviewed on its own:
 
-1. [Noisy-fleet numerical reference and independent verification](https://github.com/roshandhanasekaran/rulsafe/pull/1).
-2. [README, input quickstart, and v0.1.0 changelog](https://github.com/roshandhanasekaran/rulsafe/pull/2).
-3. [Installed-demo packaging fix](https://github.com/roshandhanasekaran/rulsafe/pull/3).
-4. [Physical NASA battery integration check](https://github.com/roshandhanasekaran/rulsafe/pull/4).
-5. Candidate metadata, distribution checks, private build artifacts, and this
-   release procedure (the release-preparation PR).
-6. The follow-up grouping correction and independent review record: reject
-   unsupported grouping before fitting and preserve physical-machine identity
-   when supplying partitions for repaired episodes.
+1. [Strict runtime table contract](https://github.com/roshandhanasekaran/rulsafe/pull/7).
+2. [NASA milling physical-data smoke check](https://github.com/roshandhanasekaran/rulsafe/pull/8).
+3. [Reject v0.1 configuration options without runtime behavior](https://github.com/roshandhanasekaran/rulsafe/pull/9).
+4. [Preserve configured report metadata and ordering](https://github.com/roshandhanasekaran/rulsafe/pull/10).
+5. [Make the isolated mypy pre-commit hook reproducible](https://github.com/roshandhanasekaran/rulsafe/pull/11).
+6. [Complete the exported report writers](https://github.com/roshandhanasekaran/rulsafe/pull/12).
+7. [Documentation consistency and final review record](https://github.com/roshandhanasekaran/rulsafe/pull/13).
 
-Retarget dependent PRs as their bases merge. Do not squash a dependent base
-without preserving or rebasing its dependent commits. The final merged commit
-must pass CI and be the source for the eventual release artifacts.
+Review each PR and its CI before owner-approved integration. Rebase or merge
+them in the order above. Retain every overlapping `CHANGELOG.md` entry and both
+the audit-policy and report-metadata updates when resolving `README.md`. PRs 7
+and 12 also touch the import block in
+`pipeline/execute.py`; the integrated file needs PR 7's `math` import and PR
+12's removal of the unused `json` import. Run the complete matrix again on the
+resulting `main`; green checks on the independent branches do not replace that
+final integrated run. Build eventual release artifacts only from that tested
+commit.
 
 Read the [critical review and validation record](release-review-v0.1.0.md).
 The v0.1 contract is completed-trajectory RUL. `failure_within_horizon`, native
@@ -45,11 +49,13 @@ pip-audit --requirement requirements/dev-3.12.lock \
   --format cyclonedx-json --output dist/sbom-build-python-3.12.cdx.json
 ```
 
-Start with an empty `dist/` or a new checkout so older versions cannot be mixed
-into the candidate. Verify the wheel contains the typing marker, two demo YAML
-configs, LICENSE, and NOTICE, and no third-party datasets. The sdist contains
-first-party synthetic test fixtures; it must not contain downloaded NASA data,
-local runs, secrets, or environment files.
+Build from a fresh checkout of the exact approved commit and start with an
+empty `dist/`; emptying `dist/` in a worktree used for tests is not an
+equivalent release source. Verify the wheel contains the typing marker, two
+demo YAML configs, LICENSE, and NOTICE, and no third-party datasets. The sdist
+contains first-party synthetic test fixtures; reject it if it contains test
+caches such as `.hypothesis`, `.pytest_cache`, `.coverage*`, or `__pycache__`,
+or any downloaded NASA data, local runs, secrets, or environment files.
 
 Create a separate environment, install the lock and the built wheel there,
 then run its installed-package check:
@@ -73,8 +79,8 @@ Repeat the full test suite on Python 3.11, 3.12, and 3.13 with each matching
 lock. Install Gitleaks with `bash scripts/install-gitleaks.sh` and put its
 installation directory on PATH. Run pre-commit, Ruff, mypy, Bandit, the
 full-history Gitleaks scan, and each lock's dependency audit. Reproduce the
-[FD001 evaluation](../benchmarks/verification-cb1136e.md) and, optionally, the
-[physical battery smoke check](../benchmarks/nasa-battery-smoke.md).
+[FD001 evaluation](../benchmarks/verification-cb1136e.md) and review the
+optional [physical-data integration checks](../benchmarks/README.md).
 
 CI's build job retains the sdist, wheel, SHA256SUMS, and an audited CycloneDX
 JSON SBOM as a workflow artifact for review. The SBOM describes the entire

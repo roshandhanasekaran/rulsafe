@@ -1,8 +1,10 @@
-"""Leakage suite result and the severity of its worst finding.
+"""Leakage result helpers and a reserved generic suite entry point.
 
 An empty finding list is ``NOT_CHECKED``, not ``PASS``. Confirmed is more
 serious than warning, warning is more serious than not checked, and not
-checked is more serious than pass.
+checked is more serious than pass. The v0.1 public pipeline assembles its
+implemented findings directly; ``run_leakage_suite`` is an internal placeholder
+that it does not call.
 """
 
 from collections.abc import Sequence
@@ -59,7 +61,7 @@ class LeakageSuiteResult:
 
 
 def run_leakage_suite(context: AuditContext) -> LeakageSuiteResult:
-    """Run every leakage check and keep a row for each one.
+    """Reserved entry point for a future generic leakage suite.
 
     A confirmed ``fail_on`` check aborts training after the report is written.
     The report must not say the audit found no leakage in general.
@@ -71,6 +73,6 @@ def run_leakage_suite(context: AuditContext) -> LeakageSuiteResult:
         Findings, including ``NOT_CHECKED`` for checks that did not run.
 
     Raises:
-        NotImplementedError: The suite is not implemented yet.
+        NotImplementedError: This reserved suite entry point is not implemented.
     """
     raise not_implemented("run_leakage_suite", context)

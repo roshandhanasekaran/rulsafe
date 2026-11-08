@@ -39,7 +39,8 @@ def assign_splits(
     """Assign each entity to train, validation, or final test.
 
     Args:
-        protocol: ``official_partitions`` or ``group_holdout``.
+        protocol: ``group_holdout``. Official files are handled by
+            :func:`assign_official_partitions`.
         group_identifiers: Asset or group ids. Duplicates are ignored.
         train_ratio: Share of groups for train.
         validation_ratio: Share of groups for validation.
@@ -50,7 +51,8 @@ def assign_splits(
         Entity identifiers by split. Each id appears in one split.
 
     Raises:
-        NotImplementedError: ``official_partitions`` is not implemented yet.
+        NotImplementedError: The protocol is not ``group_holdout``; use
+            :func:`assign_official_partitions` for official files.
         ConfigurationError: The ratios do not describe a split of these groups.
     """
     if protocol is not SplitProtocol.GROUP_HOLDOUT:
