@@ -255,6 +255,10 @@ and [source, protocol, hashes, and attribution](docs/cmapss-fd001.md).
 The NASA catalog does not specify a dataset licence. The separate Zenodo
 record's CC BY 4.0 statement applies to that record only.
 
+An additional [physical NASA battery integration check](benchmarks/nasa-battery-smoke.md)
+exercises the generic input path. Its small cell count limits it to a smoke
+check; its scores are not a claim of battery-prediction accuracy.
+
 ## Development and release status
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), and

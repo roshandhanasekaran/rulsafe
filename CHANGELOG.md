@@ -7,6 +7,9 @@ pending owner approval.
 
 ### Added
 
+- Opt-in integration check on physical NASA battery sensor measurements with
+  documented capacity-defined end-of-life labels and censored-cell reporting.
+  Its single-cell held-out split is a smoke check, not a performance benchmark.
 - Equipment-agnostic introduction and an executable Readings / Events / Assets
   column-map quickstart. v0.1 supports completed-trajectory RUL; failure-within-
   horizon tasks and censored-fleet classification remain deferred.
