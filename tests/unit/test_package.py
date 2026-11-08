@@ -57,6 +57,12 @@ def test_run_pipeline_keeps_the_censored_engine(load_example, tmp_path) -> None:
         assert isinstance(members, list)
         assert members
     assert document["contract_violations"] == []
+    assert document["title"] == config.report.title
+    assert document["project"] == config.project.name
+    assert document["project_notes"] == config.project.notes
+    assert document["label_unit"] == "cycles"
+    assert document["timestamp_type"] == "integer_step"
+    assert document["report_split_order"] == ["train", "validation", "test"]
     _assert_computed_model_metrics(document["metrics"])
     risks = document["risks"]
     assert isinstance(risks, list)
@@ -97,6 +103,44 @@ def test_run_pipeline_keeps_the_censored_engine(load_example, tmp_path) -> None:
     )
 
 
+def test_report_honors_metadata_and_split_order(load_example, tmp_path) -> None:
+    raw = load_example("synthetic_panel.yaml")
+    project = raw["project"]
+    signals = raw["signals"]
+    labeling = raw["labeling"]
+    evaluation = raw["evaluation"]
+    report = raw["report"]
+    assert isinstance(project, dict)
+    assert isinstance(signals, dict)
+    assert isinstance(labeling, dict)
+    assert isinstance(evaluation, dict)
+    assert isinstance(report, dict)
+    project["notes"] = "Reviewed <locally> & retained with the run."
+    signals["timestamp_type"] = "cycle"
+    labeling["unit"] = "steps"
+    evaluation["report_split_order"] = ["test", "train", "validation"]
+    report["title"] = "Configured <report>"
+    config = RunConfig.from_mapping(raw)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        document = run_pipeline(config, output_directory=tmp_path).to_dict()
+
+    assert document["title"] == "Configured <report>"
+    assert document["project_notes"] == "Reviewed <locally> & retained with the run."
+    assert document["label_unit"] == "steps"
+    assert document["timestamp_type"] == "cycle"
+    assert document["report_split_order"] == ["test", "train", "validation"]
+    assert list(document["splits"]) == ["test", "train", "validation"]
+    assert list(document["metric_roles"]) == ["test", "validation"]
+    assert list(document["metrics"]) == ["test", "validation"]
+
+    html = (tmp_path / "report.html").read_text(encoding="utf-8")
+    assert "<title>Configured &lt;report&gt;</title>" in html
+    assert "Reviewed &lt;locally&gt; &amp; retained with the run." in html
+    assert "test, train, validation" in html
+    assert html.index("Test split metrics") < html.index("Validation split metrics")
+
+
 def test_reject_policy_writes_a_failed_report_then_stops(load_example, tmp_path) -> None:
     raw = load_example("synthetic_panel.yaml")
     labeling = raw["labeling"]
@@ -111,6 +155,11 @@ def test_reject_policy_writes_a_failed_report_then_stops(load_example, tmp_path)
     assert report_path.is_file()
     document = json.loads(report_path.read_text(encoding="utf-8"))
     assert document["status"] == "FAILED"
+    assert document["title"] == "Completed-trajectory pre-check"
+    assert document["project_notes"] == "Local synthetic files only. No data leaves this machine."
+    assert document["label_unit"] == "cycles"
+    assert document["timestamp_type"] == "integer_step"
+    assert document["report_split_order"] == ["train", "validation", "test"]
     assert document["metrics"] is None
     assert document["splits"] is None
     assert document["headline_model"] is None

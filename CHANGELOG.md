@@ -27,6 +27,10 @@ pending owner approval.
 
 ### Fixed
 
+- HTML and JSON reports now retain the configured report title, project notes,
+  label unit, timestamp type, and split order. Split-keyed JSON blocks and HTML
+  metric sections follow `evaluation.report_split_order`, including failed
+  partial reports where metrics are unavailable.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories

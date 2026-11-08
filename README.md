@@ -201,6 +201,8 @@ names, so it does not verify that your parent-machine grouping is correct.
 sanity-check baselines, audits the run, and writes reports. A confirmed
 `fail_on` violation writes a `FAILED` report and raises `ContractError`.
 `censored_policy: reject` also writes a partial failed report with metrics null.
+Both reports retain the configured title, project notes, label unit, timestamp
+type, and split order so the artifact records how its results should be read.
 The CLI commands `init`, `profile`, `check`, `train`, and `report` are explicit
 stubs in v0.1; use `run_pipeline` for your own data.
 
