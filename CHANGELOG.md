@@ -32,6 +32,9 @@ pending owner approval.
   resampling, observation-bound columns, replacement episode spanning,
   prediction horizons, plots, and Markdown output. Shipped configurations now
   request an empty plot list until plot generation is implemented.
+- Require the constant reference model and an explicit `fail_on` or `warn_on`
+  action for every v0.1 leakage check. This prevents model and audit selection
+  fields from being accepted without a defined runtime effect.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories

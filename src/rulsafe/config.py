@@ -1085,8 +1085,9 @@ class PreprocessingConfig(StrictConfigModel):
 class LeakageConfig(StrictConfigModel):
     """Which checks abort a run, and which checks only warn.
 
-    A check listed in neither sequence is not a pass. Once the suite exists,
-    an omitted check is reported as ``NOT_CHECKED``.
+    Every v0.1 check must be assigned to exactly one list. A ``CONFIRMED``
+    ``fail_on`` finding aborts after the failed report is written. A check in
+    ``warn_on`` is still reported with its observed status but does not abort.
 
     Attributes:
         fail_on: Checks that abort training when their status is ``CONFIRMED``.
@@ -1111,6 +1112,12 @@ class LeakageConfig(StrictConfigModel):
         if overlap:
             names = ", ".join(sorted(item.value for item in overlap))
             raise ValueError(f"A check cannot be both fail_on and warn_on: {names}.")
+        missing = set(LeakageCheckId) - set(self.fail_on) - set(self.warn_on)
+        if missing:
+            names = ", ".join(sorted(item.value for item in missing))
+            raise ValueError(
+                f"Every v0.1 leakage check must be listed in fail_on or warn_on. Missing: {names}."
+            )
         return self
 
 
@@ -1121,7 +1128,7 @@ class ModelsConfig(StrictConfigModel):
     model. Persistence is rejected. Age and logistic regression are not in v0.1.
 
     Attributes:
-        include: Baseline names in report order.
+        include: Baselines to fit. The training constant is required.
     """
 
     include: Annotated[
@@ -1132,7 +1139,7 @@ class ModelsConfig(StrictConfigModel):
     @field_validator("include")
     @classmethod
     def reject_duplicate_baselines(cls, include: list[BaselineName]) -> list[BaselineName]:
-        """Reject a repeated baseline.
+        """Reject a repeated baseline or omission of the required constant.
 
         Args:
             include: Requested baselines.
@@ -1141,6 +1148,11 @@ class ModelsConfig(StrictConfigModel):
             The same list when each baseline appears once.
         """
         _require_unique(include, "baseline")
+        if BaselineName.CONSTANT not in include:
+            raise ValueError(
+                "models.include must contain constant. It is the required training-only "
+                "reference used for validation model selection."
+            )
         return include
 
 
