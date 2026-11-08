@@ -262,7 +262,7 @@ check; its scores are not a claim of battery-prediction accuracy.
 ## Development and release status
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), and
-[SECURITY.md](SECURITY.md). The repository remains private pending owner
+[SECURITY.md](SECURITY.md), and the [release review](docs/release-review-v0.1.0.md). The repository remains private pending owner
 approval. No PyPI publication is part of release preparation.
 
 Code licence: [Apache-2.0](LICENSE). Dataset terms remain separate.

@@ -134,3 +134,40 @@ jobs:
               raise SystemExit("py.typed is missing from the wheel")
           print(wheels[0])
           PY
+      - name: Test the installed wheel outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -m venv "$RUNNER_TEMP/rulsafe-wheel"
+          "$RUNNER_TEMP/rulsafe-wheel/bin/python" -m pip install \
+            --require-hashes --only-binary=:all: \
+            -r "$GITHUB_WORKSPACE/requirements/dev-3.12.lock"
+          "$RUNNER_TEMP/rulsafe-wheel/bin/python" -m pip install \
+            --no-deps "$GITHUB_WORKSPACE"/dist/*.whl
+          "$RUNNER_TEMP/rulsafe-wheel/bin/python" \
+            "$GITHUB_WORKSPACE/scripts/check_installed_distribution.py"
+      - name: Generate audited build-environment SBOM
+        run: |
+          pip-audit --requirement requirements/dev-3.12.lock \
+            --disable-pip --require-hashes --progress-spinner=off \
+            --format cyclonedx-json --output dist/sbom-build-python-3.12.cdx.json
+      - name: Hash candidate artifacts
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          directory = Path("dist")
+          lines = [
+              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
+              for path in sorted(directory.iterdir())
+              if path.is_file() and path.name != "SHA256SUMS"
+          ]
+          (directory / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+      - name: Retain private candidate artifacts (no publishing)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rulsafe-candidate-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

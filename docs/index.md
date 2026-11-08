@@ -11,6 +11,7 @@ column map and an executable Python example.
   measurements across the supported Python versions.
 - [Contributing](../CONTRIBUTING.md): locked setup, tests, and review procedure.
 - [Security](../SECURITY.md) and [supply-chain decision](decisions/ADR-010-security-supply-chain.md).
+- [Release preparation](releasing.md) and [critical review](release-review-v0.1.0.md).
 - [Changelog](../CHANGELOG.md): release scope and unimplemented features.
 
 Failure-within-horizon questions and censored-fleet classification are deferred.

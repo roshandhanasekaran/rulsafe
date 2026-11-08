@@ -7,6 +7,12 @@ pending owner approval.
 
 ### Added
 
+- v0.1.0 candidate package metadata, source links, explicit Apache-2.0 licence
+  files, and matching citation version. No publication date is assigned yet.
+- CI installs the built wheel in a clean environment, runs its demos outside
+  the checkout, and retains candidate distributions, checksums, and an audited
+  build-environment CycloneDX SBOM as private workflow artifacts. There is no
+  publishing job or publishing credential.
 - Opt-in integration check on physical NASA battery sensor measurements with
   documented capacity-defined end-of-life labels and censored-cell reporting.
   Its single-cell held-out split is a smoke check, not a performance benchmark.

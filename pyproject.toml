@@ -5,9 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "rulsafe"
 dynamic = ["version"]
-description = "Completed-trajectory remaining-useful-life checks with an explicit leakage audit."
+description = "Pre-training leakage and data-trust checks for completed-trajectory remaining useful life."
 readme = "README.md"
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11"
 authors = [{ name = "RULSafe contributors" }]
 keywords = [
@@ -18,10 +19,9 @@ keywords = [
   "evaluation",
 ]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
@@ -39,6 +39,12 @@ dependencies = [
   "scikit-learn>=1.7.0,<1.10",
   "pyarrow>=23.0.1,<24",
 ]
+
+[project.urls]
+Repository = "https://github.com/roshandhanasekaran/rulsafe"
+Documentation = "https://github.com/roshandhanasekaran/rulsafe#readme"
+Issues = "https://github.com/roshandhanasekaran/rulsafe/issues"
+Changelog = "https://github.com/roshandhanasekaran/rulsafe/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 demo = [
