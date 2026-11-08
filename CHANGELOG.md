@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.1.0 — Unreleased
+
+Prepared for review; not published to PyPI. The repository remains private
+pending owner approval.
+
+### Added
+
+- Equipment-agnostic introduction and an executable Readings / Events / Assets
+  column-map quickstart. v0.1 supports completed-trajectory RUL; failure-within-
+  horizon tasks and censored-fleet classification remain deferred.
+- Independent verification of `cb1136e` on Python 3.11.17, 3.12.15, and
+  3.13.17: 141 tests pass with 91.48% branch-inclusive coverage on each version.
+- Recorded official FD001 results: tree RMSE 16.6554 (95% engine-bootstrap
+  interval 13.85–19.20), MAE 12.12, and NASA sum 665.73. Constant RMSE 41.82.
+  See [verification details](benchmarks/verification-cb1136e.md).
+
+### Fixed
+
+- Cross-version metrics now reference the noisy synthetic demo fleet, whose
+  measured tree test RMSE is 1.9655398693652688. The 0.00739044155925539 smoke
+  panel result comes from `remaining_life = 3 - pressure` and is not a useful
+  accuracy benchmark. The panel remains for causal and contract tests.
+- The documented absolute test tolerance is enforced with `rel=0`.
+
+### Scope and limits
+
+- Completed-trajectory RUL, CSV/Parquet inputs, causal last/mean/slope features,
+  training-only clipping/scaling, validation-only model selection, and local
+  HTML/JSON reports are implemented.
+- Confirmed configured leakage failures write `FAILED` reports. Missing audit
+  evidence stays `NOT_CHECKED`; missing metrics stay null. FD001 has no
+  `available_at`, so delayed-record leakage remains unchecked.
+- `failure_within_horizon`, SCANIA, global-time splits, alerts, native date
+  parsing, and the generic `check`/`train` CLI commands are not implemented.
+
+
 ## 0.0.1 — 2026-11-07
 
 Foundation release. The package installs, the v0.1 schema validates, and the completed-trajectory pipeline writes `report.json` and `report.html`.

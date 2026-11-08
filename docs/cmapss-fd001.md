@@ -1,6 +1,6 @@
 # C-MAPSS FD001
 
-v0.1 scores completed training trajectories from NASA C-MAPSS FD001. The raw archive is not part of this repository. `data/` is git-ignored.
+v0.1 uses completed training trajectories from NASA C-MAPSS FD001 to fit its baselines and scores the official test engines at their last observation. The raw archive is not part of this repository. `data/` is git-ignored.
 
 ## Source
 
@@ -68,3 +68,13 @@ From a local copy of either pinned zip:
 ```bash
 rulsafe data fetch cmapss --from-file /path/to/CMAPSSData.zip
 ```
+
+## Measured results
+
+The [independent verification of cb1136e](../benchmarks/verification-cb1136e.md)
+records actual runs with the committed locks, including test coverage,
+interpreter/dependency versions, uncertainty, and reproduction commands.
+The official tree test RMSE is 16.6554, MAE 12.12, and NASA sum 665.73;
+the constant RMSE is 41.82. These simulated-engine results do not establish
+performance on physical fleet equipment. Delayed-record leakage is unchecked
+because FD001 has no `available_at` column.
