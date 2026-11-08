@@ -16,8 +16,7 @@ independently from that same base so each diff can be reviewed on its own:
 4. [Preserve configured report metadata and ordering](https://github.com/roshandhanasekaran/rulsafe/pull/10).
 5. [Make the isolated mypy pre-commit hook reproducible](https://github.com/roshandhanasekaran/rulsafe/pull/11).
 6. [Complete the exported report writers](https://github.com/roshandhanasekaran/rulsafe/pull/12).
-7. The documentation-consistency and final review record that contains this
-   procedure.
+7. [Documentation consistency and final review record](https://github.com/roshandhanasekaran/rulsafe/pull/13).
 
 Review each PR and its CI before owner-approved integration. Rebase or merge
 them in the order above, resolving overlapping `CHANGELOG.md` additions by

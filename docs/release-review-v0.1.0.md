@@ -138,7 +138,7 @@ CycloneDX SBOM.
 
 The code-review and QA agents report no reproduced runtime blocker in the
 six-PR integration. The remaining engineering gate is to review and integrate
-PRs 7–12 plus the documentation update, resolve the documented import and
+PRs 7–13, resolve the documented import and
 changelog overlaps, and repeat the full CI and installed-artifact checks on the
 resulting `main` commit.
 
