@@ -151,7 +151,10 @@ jobs:
           reference_wheels = sorted(reference_wheel_dir.glob("*.whl"))
           if len(reference_wheels) != 1:
               raise SystemExit(f"Expected one source-built reference wheel: {reference_wheels}")
-          if wheels[0].read_bytes() != reference_wheels[0].read_bytes():
+          if (
+              wheels[0].name != reference_wheels[0].name
+              or wheels[0].read_bytes() != reference_wheels[0].read_bytes()
+          ):
               raise SystemExit(
                   "Release wheel differs from the independently source-built reference wheel"
               )
