@@ -1,9 +1,11 @@
 # v0.1.0 critical review and validation
 
-Review date: 2026-11-08. `main` is still the private, unpublished commit
-`d42b32e`. A separate code-review agent and QA agent inspected the follow-up
-PRs, constructed integration trees, and repeated adversarial, cross-version,
-and installed-package checks. These reviews do not replace maintainer approval.
+Review date: 2026-11-08. PRs 7–13 are merged into the private, unpublished
+`main` branch. The integration point `6907bb1` passed the complete local and
+GitHub Actions matrices. A separate code-review agent and QA agent inspected
+the follow-up PRs, constructed integration trees, and repeated adversarial,
+cross-version, and installed-package checks. These reviews do not replace
+maintainer approval.
 
 The reviewed follow-up heads are:
 
@@ -15,6 +17,7 @@ The reviewed follow-up heads are:
 | [10](https://github.com/roshandhanasekaran/rulsafe/pull/10) | `c7cf11f` | Report metadata and ordering |
 | [11](https://github.com/roshandhanasekaran/rulsafe/pull/11) | `2970d31` | Hermetic mypy pre-commit hook |
 | [12](https://github.com/roshandhanasekaran/rulsafe/pull/12) | `e4a653c` | Exported JSON and terminal report writers |
+| [13](https://github.com/roshandhanasekaran/rulsafe/pull/13) | `6e38091` | Documentation consistency and final review record |
 
 ## Defects resolved
 
@@ -47,8 +50,12 @@ The reviewed follow-up heads are:
   strict mypy also pass on that tree.
 - Every individual PR above completed its nine CI jobs: lint/types, security,
   the three Python test jobs, the three hashed-lock audits, and the wheel build.
-  The independent branches still require one final run after owner-approved
-  integration on `main`.
+  After integration, private `main` at
+  [`6907bb1`](https://github.com/roshandhanasekaran/rulsafe/commit/6907bb1e520b6476ebcc5c418ff5dd40f6b6b7df)
+  produced **185 passed, 91.75% branch-inclusive coverage** on each of Python
+  3.11.17, 3.12.15, and 3.13.17. Its
+  [nine-job workflow](https://github.com/roshandhanasekaran/rulsafe/actions/runs/42501036934)
+  also passed.
 - Official FD001 tree RMSE is **16.65538791185784**, MAE is
   **12.119968435305868**, NASA sum is **665.7298894865181**, and constant RMSE
   is **41.821494536757605**. The Python 3.12.15 95% engine-bootstrap tree RMSE
@@ -77,6 +84,11 @@ The reviewed follow-up heads are:
   failed reports, metadata and ordering checks, HTML escaping, strict JSON,
   and terminal-summary probes. Earlier checks also installed the wheel on all
   three interpreters and passed Twine 7.0.0 for wheel and source archive.
+- Fresh wheel and source artifacts built from integrated commit `6907bb1`
+  passed strict Twine checks, an isolated installed-package check, `pip check`,
+  and a dependency audit. Installing its source archive reproduced the tested
+  wheel byte for byte. The artifacts must be rebuilt after this documentation
+  update because it changes source-archive content.
 - All **50** wheel code/resource files and all **118** tracked sdist files match
   the tested integration tree byte for byte. `PKG-INFO` is the sdist's only
   generated extra; neither distribution contains downloaded dataset files.
@@ -137,9 +149,10 @@ CycloneDX SBOM.
 ## Work remaining before release
 
 The code-review and QA agents report no reproduced runtime blocker in the
-six-PR integration. The remaining engineering gate is to review and integrate
-PRs 7–13, resolve the documented text and import overlaps, then repeat the
-full CI and installed-artifact checks on the resulting `main` commit.
+six-PR code integration, and PRs 7–13 are merged. The remaining engineering
+gate is to review and merge this documentation-only status update, repeat CI
+on the resulting `main`, and rebuild and inspect artifacts from that exact
+commit.
 
 Repository visibility, the release date/tag, GitHub Release, PyPI project-name
 registration, trusted-publishing configuration, and upload remain separate
