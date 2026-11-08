@@ -16,6 +16,10 @@ pending owner approval.
 - Opt-in integration check on physical NASA battery sensor measurements with
   documented capacity-defined end-of-life labels and censored-cell reporting.
   Its single-cell held-out split is a smoke check, not a performance benchmark.
+- Opt-in integration check on physical NASA milling current, vibration, and
+  acoustic-emission measurements. A declared observed-wear threshold produces
+  15 completed cases and one censored case; the two-case held-out splits make
+  this a smoke check rather than a performance benchmark.
 - Equipment-agnostic introduction and an executable Readings / Events / Assets
   column-map quickstart. v0.1 supports completed-trajectory RUL; failure-within-
   horizon tasks and censored-fleet classification remain deferred.
@@ -31,12 +35,29 @@ pending owner approval.
   label unit, timestamp type, and split order. Split-keyed JSON blocks and HTML
   metric sections follow `evaluation.report_split_order`, including failed
   partial reports where metrics are unavailable.
+- Reject schema options that the v0.1 runtime does not consume instead of
+  silently accepting them: static asset features, native datetimes, frequency
+  resampling, observation-bound columns, replacement episode spanning,
+  prediction horizons, plots, and Markdown output. Shipped configurations now
+  request an empty plot list until plot generation is implemented.
+- Require the constant reference model and an explicit `fail_on` or `warn_on`
+  action for every v0.1 leakage check. This prevents model and audit selection
+  fields from being accepted without a defined runtime effect.
+- Validate configured physical-table columns and cells before fitting. Missing
+  sensor columns, blank or repeated Assets IDs, malformed or non-finite numeric
+  values, and impossible `available_at` times now raise a configuration error.
+  Terminal histories with no pre-event reading are reported as unsupported,
+  and events for unregistered assets can no longer disappear from the audit.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories
   must use supplied partitions that keep every episode of a physical machine
   together; documentation now states the audit cannot infer parent hardware
   from episode IDs. Found independently by the code-review and QA agents.
+- Reject duplicate or blank physical table headers, CSV rows whose cell count
+  differs from the header, and invalid UTF-8 before any values are mapped or a
+  model is fit. Duplicate names can no longer hide an invalid identifier or
+  sensor value behind the later column.
 - Installed demos resolve bundled configurations outside a source checkout.
   Synthetic inputs are generated locally from the existing deterministic fleet;
   no dataset files are added to the wheel. Missing FD001 tables produce the

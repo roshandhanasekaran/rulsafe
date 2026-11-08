@@ -53,7 +53,11 @@ CSV and Parquet are supported. The configuration calls Readings `signals`.
 Use numeric cycles or elapsed steps in a common time unit. Native calendar-date
 parsing is not implemented in this pipeline; convert dates before running it.
 Supply `available_at` when possible: this is when a record could first have
-been known, which may be later than when the measurement happened.
+been known, which may be later than when the measurement happened. Configured
+columns must exist. IDs must be non-blank, and the Assets ID must be unique.
+Times and non-blank sensor cells must be finite numbers; leave a sensor cell
+blank to represent a missing reading. `available_at` cannot precede its row's
+timestamp.
 
 Readings (`readings.csv`), showing two rows from the bundled noisy fleet with
 renamed ID and time columns:
@@ -80,6 +84,8 @@ ratio-split quickstart assumes one ID per independent physical machine.
 Keep failure notes and repair outcomes out of the sensor features. Histories
 without an observed terminal event must be rejected or reported as excluded,
 never silently treated as healthy.
+A terminal event with no reading strictly before it is also unsupported: it is
+reported and excluded instead of being counted as a completed split member.
 
 v0.1 also requires an **Assets** file listing all machine IDs, including those
 without a completed history. You can make `assets.csv` from your Readings:
@@ -203,8 +209,18 @@ sanity-check baselines, audits the run, and writes reports. A confirmed
 `censored_policy: reject` also writes a partial failed report with metrics null.
 Both reports retain the configured title, project notes, label unit, timestamp
 type, and split order so the artifact records how its results should be read.
+The training constant is a required reference model. Every leakage check must
+be assigned to either `fail_on` or `warn_on`; moving a check to `warn_on` makes
+its finding non-fatal but does not hide or downgrade its observed status.
 The CLI commands `init`, `profile`, `check`, `train`, and `report` are explicit
 stubs in v0.1; use `run_pipeline` for your own data.
+
+The v0.1 schema rejects options that the runtime cannot yet honor. Static asset
+features, native datetime parsing, frequency resampling, observation-bound
+columns, a non-null prediction horizon, plot output, and Markdown reports are
+deferred. Replacement episodes must use separate IDs, with
+`replacement_starts_new_episode: true`. This prevents a configuration from
+appearing to take effect when the pipeline would otherwise ignore it.
 
 ## Example report
 
@@ -285,6 +301,9 @@ record's CC BY 4.0 statement applies to that record only.
 An additional [physical NASA battery integration check](benchmarks/nasa-battery-smoke.md)
 exercises the generic input path. Its small cell count limits it to a smoke
 check; its scores are not a claim of battery-prediction accuracy.
+A separate [physical NASA milling check](benchmarks/nasa-milling-smoke.md) uses
+recorded spindle current, vibration, and acoustic-emission traces with a
+declared observed-wear event. Its small held-out case count has the same limit.
 
 ## Development and release status
 

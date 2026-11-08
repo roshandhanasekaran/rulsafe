@@ -270,6 +270,9 @@ def _optional_float(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         raise ConfigurationError(f"Expected a number, got {value!r}.")
     try:
-        return float(value)
+        number = float(value)
     except ValueError as error:
         raise ConfigurationError(f"Expected a number, got {value!r}.") from error
+    if not math.isfinite(number):
+        raise ConfigurationError(f"Expected a finite number, got {value!r}.")
+    return number

@@ -9,6 +9,7 @@ files are used as written and are not shuffled.
 """
 
 import json
+import math
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -75,6 +76,7 @@ from rulsafe.models.baselines import (
     fit_histogram_gradient_boosting,
 )
 from rulsafe.pipeline.episodes import Episode, build_episodes
+from rulsafe.pipeline.input_contract import validate_table_contract
 from rulsafe.pipeline.labels import (
     HistoryDisposition,
     HistorySupport,
@@ -125,6 +127,7 @@ def execute_configured_run(
         events=load_table(Path(config.connector.events), LogicalTableRole.EVENTS),
     )
     config = _resolve_auto_features(config, tables.signals.rows)
+    validate_table_contract(tables, config)
     episodes = build_episodes(tables, config)
     supervised, excluded = _separate_training_histories(episodes, config)
     censored_ids = tuple(
@@ -917,7 +920,10 @@ def _audit_findings(
         target_in_features_finding(feature_names, association_rows),
         event_metadata_in_features_finding(feature_names, config.events.forbidden_as_features),
         silent_negative_censoring_finding(competing_ids, split_ids, labeled_asset_ids),
-        unsupported_history_finding(_ids_requiring_a_report(tables, config), censored_ids),
+        unsupported_history_finding(
+            tuple(sorted(set(_ids_requiring_a_report(tables, config)) | set(censored_ids))),
+            censored_ids,
+        ),
         replacement_episode_mix_finding(
             _episode_spans(episodes), _replacement_events(tables, config)
         ),
@@ -987,7 +993,7 @@ def _event_ids(
     wanted = {event_type.casefold() for event_type in event_types}
     found: set[str] = set()
     for row in tables.events.rows:
-        if row.get(config.events.type_column, "").casefold() not in wanted:
+        if row.get(config.events.type_column, "").strip().casefold() not in wanted:
             continue
         asset_id = row.get(config.events.id_column, "").strip()
         if asset_id:
@@ -1010,17 +1016,17 @@ def _ids_requiring_a_report(tables: LogicalTables, config: RunConfig) -> tuple[s
     Returns:
         Sorted asset ids.
     """
-    present = _table_ids(tables.assets.rows, config.assets.id_column) | _table_ids(
-        tables.signals.rows, config.signals.id_column
-    )
+    asset_ids = _table_ids(tables.assets.rows, config.assets.id_column)
+    signal_ids = _table_ids(tables.signals.rows, config.signals.id_column)
+    event_ids = _table_ids(tables.events.rows, config.events.id_column)
+    present = asset_ids | signal_ids | event_ids
     terminal = set(_event_ids(tables, config, config.events.terminal_types))
     competing = set(_event_ids(tables, config, config.events.competing_types))
-    required = [
-        asset_id
-        for asset_id in sorted(present)
-        if asset_id in competing or asset_id not in terminal
-    ]
-    return tuple(required)
+    unregistered = (signal_ids | event_ids) - asset_ids
+    required = {
+        asset_id for asset_id in present if asset_id in competing or asset_id not in terminal
+    }
+    return tuple(sorted(required | unregistered))
 
 
 def _observed_label_triples(
@@ -1042,7 +1048,7 @@ def _observed_label_triples(
     ends: dict[str, float] = {}
     wanted = {event_type.casefold() for event_type in config.events.terminal_types}
     for event_row in tables.events.rows:
-        if event_row.get(config.events.type_column, "").casefold() not in wanted:
+        if event_row.get(config.events.type_column, "").strip().casefold() not in wanted:
             continue
         asset_id = event_row.get(config.events.id_column, "").strip()
         raw_time = event_row.get(config.events.event_time_column, "")
@@ -1123,7 +1129,7 @@ def _replacement_events(
         return ()
     found: list[tuple[str, float]] = []
     for row in tables.events.rows:
-        if row.get(config.events.type_column, "").casefold() not in types:
+        if row.get(config.events.type_column, "").strip().casefold() not in types:
             continue
         asset_id = row.get(config.events.id_column, "").strip()
         raw_time = row.get(config.events.event_time_column, "")
@@ -1183,9 +1189,12 @@ def _number(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         raise ConfigurationError(f"Expected a number, got {value!r}.")
     try:
-        return float(value)
+        number = float(value)
     except ValueError as error:
         raise ConfigurationError(f"Expected a number, got {value!r}.") from error
+    if not math.isfinite(number):
+        raise ConfigurationError(f"Expected a finite number, got {value!r}.")
+    return number
 
 
 _DISCLAIMER = (

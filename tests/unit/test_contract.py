@@ -38,6 +38,20 @@ def test_unsupported_suffix_is_rejected_before_read() -> None:
         load_table(Path("signals.parquet"), LogicalTableRole.SIGNALS)
 
 
+def test_duplicate_parquet_columns_are_rejected(tmp_path: Path) -> None:
+    import pyarrow as arrow
+    import pyarrow.parquet as parquet
+
+    path = tmp_path / "duplicate.parquet"
+    table = arrow.Table.from_arrays(
+        [arrow.array(["engine-a"]), arrow.array(["engine-b"])],
+        names=["asset_id", "asset_id"],
+    )
+    parquet.write_table(table, path)
+    with pytest.raises(ConfigurationError, match="duplicate column names: asset_id"):
+        load_table(path, LogicalTableRole.ASSETS)
+
+
 def test_censored_histories_are_not_dropped() -> None:
     dispositions = {
         disposition_for_history(support, policy)
