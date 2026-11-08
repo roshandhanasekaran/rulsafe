@@ -1,5 +1,11 @@
 # Benchmarks
 
-Not part of v0.1. The v0.1 demo is C-MAPSS FD001, scored at the last observation, plus the in-repo synthetic fixtures.
+The v0.1 reference is C-MAPSS FD001 using the official last-observation
+protocol. See the [independent verification of cb1136e](verification-cb1136e.md)
+for measured results and reproduction commands, and the
+[dataset/protocol note](../docs/cmapss-fd001.md) for source, hashes, and licensing.
 
-SCANIA Component X, and the other industry datasets listed in the original fleet specification, are a later task. Do not add downloaders or a leaderboard here in v0.1.
+Synthetic fixtures exercise the pipeline and audit; their scores are not
+real-equipment benchmarks. The tiny synthetic panel is deliberately degenerate.
+
+SCANIA Component X and other censored fleet benchmarks are deferred beyond v0.1.

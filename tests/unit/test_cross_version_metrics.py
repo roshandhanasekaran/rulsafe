@@ -1,11 +1,9 @@
 """Tree metrics that must agree on Python 3.11, 3.12, and 3.13.
 
-The reference is the synthetic panel after near-constant columns are centered
-and left on a scale of 1. The same run was measured on each supported
-interpreter. Absolute differences above the stated tolerance fail this test.
+The reference is the noisy demo fleet, not the degenerate unit smoke panel.
+See benchmarks/verification-cb1136e.md for the independently measured runs.
+Absolute differences above the stated tolerance fail this test.
 """
-
-import warnings
 
 import pytest
 
@@ -15,20 +13,18 @@ from rulsafe.config import RunConfig
 # Stated absolute tolerance for RMSE, MAE, and the NASA score.
 STATED_ABSOLUTE_TOLERANCE = 1e-6
 
-# Measured on Python 3.11.18, 3.12.3, and 3.13.18. The three runs matched.
+# Measured on Python 3.11.17, 3.12.15, and 3.13.17. The three runs matched.
 REFERENCE_TREE_TEST = {
-    "root_mean_square_error": 0.00739044155925539,
-    "mean_absolute_error": 0.00739044155925539,
-    "nasa_score": 0.0007393173163461331,
+    "root_mean_square_error": 1.9655398693652688,
+    "mean_absolute_error": 1.2852426319239971,
+    "nasa_score": 0.15571061547349063,
 }
 
 
-def test_panel_tree_metrics_match_the_cross_version_reference(load_example, tmp_path) -> None:
-    """The panel tree stays within 1e-6 of the shared reference."""
-    config = RunConfig.from_mapping(load_example("synthetic_panel.yaml"))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        document = run_pipeline(config, output_directory=tmp_path).to_dict()
+def test_fleet_tree_metrics_match_the_cross_version_reference(load_example, tmp_path) -> None:
+    """The noisy demo tree stays within 1e-6 of the shared reference."""
+    config = RunConfig.from_mapping(load_example("synthetic_fleet.yaml"))
+    document = run_pipeline(config, output_directory=tmp_path).to_dict()
     metrics = document["metrics"]
     assert isinstance(metrics, dict)
     test_metrics = metrics["test"]
@@ -37,5 +33,5 @@ def test_panel_tree_metrics_match_the_cross_version_reference(load_example, tmp_
         metric = test_metrics[f"hist_gradient_boosting_{suffix}"]
         assert isinstance(metric, dict)
         assert metric["status"] == "COMPUTED"
-        assert metric["value"] == pytest.approx(expected, abs=STATED_ABSOLUTE_TOLERANCE)
-    assert document["hist_gradient_boosting_iteration_count"] == 40
+        assert metric["value"] == pytest.approx(expected, rel=0, abs=STATED_ABSOLUTE_TOLERANCE)
+    assert document["hist_gradient_boosting_iteration_count"] == 39
