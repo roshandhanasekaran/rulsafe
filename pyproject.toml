@@ -69,6 +69,10 @@ path = "src/rulsafe/_version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/rulsafe"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"examples/synthetic_fleet.yaml" = "rulsafe/demo_configs/synthetic_fleet.yaml"
+"examples/cmapss_fd001_completed_trajectory.yaml" = "rulsafe/demo_configs/cmapss_fd001_completed_trajectory.yaml"
+
 [tool.pytest.ini_options]
 addopts = [
   "--cov=rulsafe",

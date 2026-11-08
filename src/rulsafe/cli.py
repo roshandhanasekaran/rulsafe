@@ -8,6 +8,8 @@ the NASA C-MAPSS archive, checks its SHA-256, and writes git-ignored tables.
 Exit codes: 0 success, 1 a check failed, 2 usage or configuration error.
 """
 
+import tempfile
+from importlib.resources import as_file, files
 from pathlib import Path
 from typing import Annotated
 
@@ -16,6 +18,7 @@ from rich.console import Console
 
 from rulsafe._version import __version__
 from rulsafe.api import load_config
+from rulsafe.config import RunConfig
 from rulsafe.datasets.cards import DatasetCard
 from rulsafe.datasets.registry import dataset_card, fetch_dataset, list_datasets
 from rulsafe.exceptions import (
@@ -211,19 +214,15 @@ def demo_command(
     if normalized not in _V01_DEMOS:
         console.print("Unknown demo. Choose cmapss or synthetic.")
         raise typer.Exit(code=EXIT_USAGE_ERROR)
-    if normalized == "cmapss":
-        _require_cmapss_tables()
     from rulsafe.api import run_pipeline
 
-    config_name = (
-        "cmapss_fd001_completed_trajectory.yaml"
-        if normalized == "cmapss"
-        else "synthetic_fleet.yaml"
-    )
     destination = output if output is not None else Path("rulsafe-runs") / normalized
     try:
-        config = load_config(Path("examples") / config_name)
-        result = run_pipeline(config, output_directory=destination)
+        with tempfile.TemporaryDirectory(prefix="rulsafe-demo-") as temporary:
+            config = _demo_config(normalized, Path(temporary))
+            if normalized == "cmapss":
+                _require_cmapss_tables(config)
+            result = run_pipeline(config, output_directory=destination)
     except ContractError as error:
         console.print(str(error))
         raise typer.Exit(code=EXIT_CHECK_FAILED) from error
@@ -313,13 +312,54 @@ def data_fetch_command(
     )
 
 
-def _require_cmapss_tables() -> None:
+def _demo_config(name: str, temporary: Path) -> RunConfig:
+    """Load a bundled demo configuration and generate local synthetic inputs.
+
+    Args:
+        name: Validated demo name, either ``synthetic`` or ``cmapss``.
+        temporary: Scratch directory for the generated synthetic tables.
+
+    Returns:
+        Configuration with local input paths. C-MAPSS data paths remain
+        relative to the working directory used by ``data fetch cmapss``.
+    """
+    filename = (
+        "cmapss_fd001_completed_trajectory.yaml" if name == "cmapss" else "synthetic_fleet.yaml"
+    )
+    resource = files("rulsafe").joinpath("demo_configs", filename)
+    if resource.is_file():
+        with as_file(resource) as path:
+            config = load_config(path)
+    else:
+        # Editable installs use the canonical example; wheels bundle that same file.
+        config = load_config(Path(__file__).resolve().parents[2] / "examples" / filename)
+    if name == "synthetic":
+        from rulsafe.datasets.synthetic_fleet import write_fleet
+
+        write_fleet(temporary)
+        config = config.model_copy(
+            update={
+                "connector": config.connector.model_copy(
+                    update={
+                        "assets": temporary / "assets.csv",
+                        "signals": temporary / "signals.csv",
+                        "events": temporary / "events.csv",
+                    }
+                )
+            }
+        )
+    return config
+
+
+def _require_cmapss_tables(config: RunConfig) -> None:
     """Stop the C-MAPSS demo when the converted FD001 files are not on disk.
+
+    Args:
+        config: Loaded C-MAPSS demo configuration.
 
     Raises:
         typer.Exit: When a required file is missing, with code 2.
     """
-    config = load_config(Path("examples") / "cmapss_fd001_completed_trajectory.yaml")
     paths = [config.connector.assets, config.connector.signals, config.connector.events]
     partitions = config.split.official_partitions
     if partitions is not None:
@@ -332,7 +372,7 @@ def _require_cmapss_tables() -> None:
         return
     console.print(
         "C-MAPSS FD001 tables are not on disk. They are not stored in git. "
-        "Run `rulsafe data fetch cmapss` from the repository root. "
+        "Run `rulsafe data fetch cmapss` from this working directory. "
         "That downloads the NASA Prognostics outer zip "
         "https://phm-datasets.s3.amazonaws.com/NASA/"
         "6.+Turbofan+Engine+Degradation+Simulation+Data+Set.zip , "
