@@ -148,11 +148,11 @@ CycloneDX SBOM.
 
 ## Work remaining before release
 
-The code-review and QA agents report no reproduced runtime blocker in the
-six-PR code integration, and PRs 7–13 are merged. The remaining engineering
-gate is to review and merge this documentation-only status update, repeat CI
-on the resulting `main`, and rebuild and inspect artifacts from that exact
-commit.
+The implementation and documentation reviews are complete, and the code-review
+and QA agents report no reproduced runtime blocker. The release gate is tied to
+the exact commit approved for release: its complete CI must pass, and its wheel,
+source archive, checksums, and SBOM must be rebuilt and inspected. Any later
+commit requires those checks again.
 
 Repository visibility, the release date/tag, GitHub Release, PyPI project-name
 registration, trusted-publishing configuration, and upload remain separate
