@@ -8,7 +8,6 @@ histories out of every split, continues, and names them. Official partition
 files are used as written and are not shuffled.
 """
 
-import json
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -94,7 +93,7 @@ from rulsafe.pipeline.split import (
     split_size_risks,
 )
 from rulsafe.report.html import write_html_report
-from rulsafe.report.json import MetricComputationStatus, MetricValue
+from rulsafe.report.json import MetricComputationStatus, MetricValue, write_json_report
 
 
 def execute_configured_run(
@@ -1248,7 +1247,7 @@ def _write_report(document: dict[str, object], output_directory: Path) -> Path:
     html_path = output_directory / "report.html"
     document["report_json"] = str(report_path)
     document["report_html"] = str(html_path)
-    report_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    write_json_report(document, report_path)
     write_html_report(document, html_path)
     return report_path
 

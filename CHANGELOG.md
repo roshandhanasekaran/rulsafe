@@ -27,6 +27,10 @@ pending owner approval.
 
 ### Fixed
 
+- Implement the exported JSON report writer and terminal summary. Pipeline and
+  `RunResult.save_json` output now share one strict JSON writer that rejects
+  non-finite values; terminal text removes control characters and includes
+  headline metrics, leakage evidence, excluded histories, and the HTML path.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories

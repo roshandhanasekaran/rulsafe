@@ -19,8 +19,6 @@ from typing import Annotated
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, model_validator
 
-from rulsafe.exceptions import not_implemented
-
 
 class MetricComputationStatus(StrEnum):
     """Whether a report metric has a number.
@@ -148,6 +146,10 @@ def write_json_report(report_document: Mapping[str, object], path: Path) -> Path
         The path that was written.
 
     Raises:
-        NotImplementedError: JSON writing is not implemented yet.
+        TypeError: A report value is not JSON serialisable.
+        ValueError: A report value is a non-finite number.
     """
-    raise not_implemented("write_json_report", report_document, path)
+    encoded = json.dumps(dict(report_document), indent=2, allow_nan=False) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(encoded, encoding="utf-8")
+    return path

@@ -5,7 +5,6 @@ group-holdout slice and writes ``report.json``. Checks that did not run
 stay ``NOT_CHECKED``.
 """
 
-import json
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -97,9 +96,9 @@ class RunResult:
         """
         if self._document is None:
             raise not_implemented("RunResult.save_json", path)
-        destination = Path(path)
-        destination.write_text(json.dumps(self._document, indent=2) + "\n", encoding="utf-8")
-        return destination
+        from rulsafe.report.json import write_json_report
+
+        return write_json_report(self._document, Path(path))
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-ready mapping of the run.

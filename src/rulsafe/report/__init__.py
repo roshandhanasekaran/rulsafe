@@ -1,7 +1,7 @@
 """Report writers.
 
-HTML and JSON are required. The terminal summary is the human view of the
-same document. Sections that v0.1 does not compute are listed as not covered.
+HTML and JSON are required. The terminal summary is a compact plain-text view
+of the same document. Sections that v0.1 does not compute stay explicit.
 """
 
 from rulsafe.report.html import write_html_report as write_html_report
