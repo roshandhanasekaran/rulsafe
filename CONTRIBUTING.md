@@ -66,7 +66,7 @@ Bug reports and feature requests use the templates in `.github/ISSUE_TEMPLATE/`.
 
 ## Tests
 
-Schema and command-line tests live in `tests/unit/`. Planted leakage fixtures and the two invariance tests are described under `tests/leakage/` and `tests/invariance/` and are not written yet. Default CI must not download C-MAPSS or SCANIA.
+Schema and command-line tests live in `tests/unit/`. Planted leakage fixtures and invariance tests run in the default suite; see `tests/leakage/` and `tests/invariance/` for their scope. Default CI must not download C-MAPSS or SCANIA.
 
 ## Reports
 

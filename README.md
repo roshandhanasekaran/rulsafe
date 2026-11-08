@@ -1,164 +1,264 @@
 # RULSafe
 
-RULSafe is a local, leakage-safe **completed-trajectory remaining-useful-life research toolkit**. v0.1 prepares causal training rows for one question — how much life remains on a trajectory that runs to a known end — and writes an audit whose coverage is explicit.
+RULSafe is a free, Apache-2.0 Python pre-training check for failure-prediction
+data. It helps data scientists and reliability engineers find leakage and
+other reasons not to trust a result before investing in a model.
 
-It is a Python package and a command-line tool. It is not a web application. It is research and decision-support software, **not a safety-certified prognostic**, and a finished audit is not a guarantee that every leak was found.
+Bring sensor **Readings**, failure/repair **Events**, and a configuration that
+maps your columns and states the prediction question. The design is equipment
+agnostic: machine IDs can identify engines, pumps, batteries, or components.
+Fleet data are an initial focus, rather than a requirement.
 
-v0.1 does not silently drop a history it cannot score. `censored_policy: reject` stops the run with an error. `censored_policy: report` leaves the history out of every split, continues, and names it in the report. SCANIA Component X, the censored heavy-truck fleet, is **v0.2**. The v0.1 demo is **C-MAPSS FD001**, scored at the last observation of each test engine, together with small synthetic fixtures.
+**v0.1 implements remaining useful life (RUL) on completed trajectories.**
+It builds causal features, audits the split and preprocessing, fits two small
+sanity-check baselines, and writes local HTML and JSON reports. Questions such
+as “failure within 7 days,” censored-fleet classification, alert metrics, and
+global-time splits are deferred. The configuration rejects them explicitly.
+A pass covers the checks that ran; it is not a guarantee that all leakage was
+found. This is research software, not a safety-certified prognostic.
 
 ## Install
 
-Python 3.11 or newer:
+Use Python 3.11, 3.12, or 3.13. The release is being prepared and has not been
+published to PyPI. While the repository is private, cloning requires access:
 
 ```bash
-pip install -e ".[dev]"
+git clone https://github.com/roshandhanasekaran/rulsafe.git
+cd rulsafe
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install .
 ```
 
-`report.html` is written with the standard library and does not need an extra. `[demo]` still installs Jinja2. Matplotlib is intentionally not pinned yet. Matplotlib 3.11.2 requires Python 3.11 or newer, which matches this package, and it is still not a v0.1 dependency.
+No optional dependency is needed for HTML reports. Development installation
+uses the hashed lock for your interpreter; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## What works in this foundation
+## Quickstart
 
-The schema, the history-disposition rule, dataset cards, and the completed-trajectory pipeline are real. `rulsafe demo synthetic` and `rulsafe demo cmapss` fit the constant and histogram gradient boosting baselines, audit the `fail_on` checks, and write `report.json` and `report.html`.
+From the checkout root, run the local noisy-fleet example:
 
 ```bash
-rulsafe --help
-rulsafe --version
-rulsafe validate --config examples/cmapss_fd001_completed_trajectory.yaml
-rulsafe datasets list
+rulsafe demo synthetic --output rulsafe-runs/synthetic
 ```
 
-`datasets list` prints access and licence as separate facts. For C-MAPSS the NASA catalog licence is **not specified**. A separate Zenodo record (doi:10.5281/zenodo.15346912) states CC BY 4.0 for that record only. Those statements are not merged. SCANIA is listed as v0.2 under CC BY 4.0 and is not downloaded.
+Open `rulsafe-runs/synthetic/report.html` or read `report.json`. This example
+completes with a leakage **WARNING**: six training features reach the configured
+absolute-correlation threshold of 0.85. The warning is intentional and needs
+inspection. The censored unit is named and excluded from all fitting and scoring
+splits. Synthetic scores demonstrate the pipeline, not real equipment accuracy.
 
-`rulsafe validate` checks the YAML contract only. It does not open the data files.
+### Your Readings, Events, and column map
 
-Run the synthetic completed-trajectory demo from the repository root. It writes `report.json` for a deterministic noisy fleet: 20 completed units with different lifetimes, and temperature, pressure, vibration, and flow that drift and carry fixed noise. `unit-censored` leaves the study. The demo uses `censored_policy: report`, so that unit is named in the report and is not in train, validation, or test. Every split has at least three assets. The constant baseline and the histogram gradient boosting baseline are fit on the training split only. Validation metrics are used for early stopping and model selection, and the report labels them that way. The headline evaluation is the test split. The NASA score is one Saxena term per engine, and it is not a gate. `target.rul_cap` is null. The run writes `report.json` and `report.html`. The tiny panel in `tests/fixtures/synthetic_panel` and `examples/synthetic_panel.yaml` stays the unit smoke fixture: its one-asset validation and test splits are warnings in `risks`, and those scores stay `COMPUTED`. An empty split is `NOT_COMPUTED`, and that reason is in `risks`.
+CSV and Parquet are supported. The configuration calls Readings `signals`.
+Use numeric cycles or elapsed steps in a common time unit. Native calendar-date
+parsing is not implemented in this pipeline; convert dates before running it.
+Supply `available_at` when possible: this is when a record could first have
+been known, which may be later than when the measurement happened.
+
+Readings (`readings.csv`), showing two rows from the bundled noisy fleet with
+renamed ID and time columns:
+
+```csv
+machine_id,timestamp,available_at,temperature,pressure,vibration,flow
+unit-01,0,0,40.6000,11.5500,0.2500,90.1500
+unit-01,1,1,44.0808,12.8009,0.8642,87.2462
+```
+
+Events (`events.csv`), showing the corresponding terminal event:
+
+```csv
+machine_id,timestamp,available_at,what_happened,failure_notes
+unit-01,13,13,failure,wear
+```
+
+These are excerpts, not a sufficient training dataset. Supply the full histories
+of multiple independent machines for train, validation, and test. v0.1 requires
+one completed component history per ID; represent separate repaired/replaced
+histories with separate episode IDs. Keep failure notes and repair outcomes out
+of the sensor features. Histories without an observed terminal event must be
+rejected or reported as excluded, never silently treated as healthy.
+
+v0.1 also requires an **Assets** file listing all machine IDs, including those
+without a completed history. You can make `assets.csv` from your Readings:
+
+```python
+import csv
+
+with open("readings.csv", newline="", encoding="utf-8") as source:
+    identifiers = sorted({row["machine_id"] for row in csv.DictReader(source)})
+with open("assets.csv", "w", newline="", encoding="utf-8") as destination:
+    writer = csv.writer(destination)
+    writer.writerow(["machine_id"])
+    writer.writerows((identifier,) for identifier in identifiers)
+```
+
+Save this column map and prediction question as `run.yaml`. Paths resolve
+from the working directory where you run Python:
+
+```yaml
+project: {name: my-equipment-check, seed: 7}
+connector:
+  type: files
+  assets: assets.csv
+  signals: readings.csv
+  events: events.csv
+assets: {id_column: machine_id}
+signals:
+  id_column: machine_id
+  event_time_column: timestamp
+  available_at_column: available_at
+  timestamp_type: integer_step
+  feature_columns: [temperature, pressure, vibration, flow]
+events:
+  id_column: machine_id
+  event_time_column: timestamp
+  available_at_column: available_at
+  type_column: what_happened
+  terminal_types: [failure]
+  competing_types: [censored_end]
+  forbidden_as_features: [failure_notes]
+contract: {replacement_starts_new_episode: true, replacement_types: []}
+labeling:
+  task: completed_trajectory_rul
+  unit: steps
+  censored_policy: report
+windows: {lookback: 16, stride: 1, discard_straddle_split: true}
+split:
+  protocol: group_holdout
+  group_holdout:
+    group_column: machine_id
+    train_ratio: 0.70
+    validation_ratio: 0.15
+    test_ratio: 0.15
+preprocessing: {clip_percentiles: [1, 99], scaler: standard}
+leakage:
+  fail_on:
+    - random_split
+    - future_labels
+    - future_in_features
+    - post_event_features
+    - delayed_record_leak
+    - interpolation_leak
+    - entity_leakage
+    - scaler_leakage
+    - target_in_features
+    - event_metadata_in_features
+    - silent_negative_censoring
+    - unsupported_history
+    - replacement_episode_mix
+    - test_used_for_choices
+    - official_hidden_label_reconstruction
+  warn_on: [high_association_with_label, backend_internal_split]
+  association_warn_threshold: 0.85
+models: {include: [constant, hist_gradient_boosting]}
+evaluation: {threshold_split: validation}
+report:
+  formats: [html, json]
+  title: Equipment data pre-check
+  output_dir: rulsafe-runs/my-equipment
+```
+
+Validate the configuration, then execute it through the Python API:
 
 ```bash
-rulsafe demo synthetic --output ./rulsafe-runs/synthetic
+rulsafe validate --config run.yaml
 ```
-
-`rulsafe data fetch cmapss` downloads the NASA Prognostics outer zip, checks the outer and inner SHA-256 pins, and writes git-ignored FD001 tables. The NASA catalog licence is not specified. See [C-MAPSS FD001](docs/cmapss-fd001.md). The headline score is the last observation of each official test engine against `RUL_FD001.txt`. That file is not a training label. Validation comes from held-out training engines. The per-row scores on those engines are a secondary view. The example sets `target.rul_cap` to 125. `rulsafe demo cmapss` reads those tables and writes `report.json` and `report.html`. If the tables are absent the command exits with code 2 and the tree metrics for that demo are not computed. These commands still exit with code 2:
-
-```bash
-rulsafe demo cmapss --output ./rulsafe-runs/demo
-rulsafe check --config examples/cmapss_fd001_completed_trajectory.yaml
-rulsafe train --config examples/cmapss_fd001_completed_trajectory.yaml
-```
-
-`rulsafe demo scania` is refused. There is no `rulsafe ui` command.
-
-## Usage
-
-### Command line
-
-Validate a completed-trajectory configuration. This does not read the data files:
-
-```bash
-rulsafe validate --config examples/cmapss_fd001_completed_trajectory.yaml
-rulsafe validate --config examples/synthetic_panel.yaml
-```
-
-A SCANIA configuration is rejected in v0.1:
-
-```bash
-rulsafe validate --config examples/scania_component_x.yaml
-```
-
-List datasets. Access and licence are separate lines. C-MAPSS prints "not specified" for the NASA catalog, then the Zenodo note. SCANIA prints CC BY 4.0 and is marked v0.2:
-
-```bash
-rulsafe datasets list
-rulsafe data fetch cmapss
-rulsafe datasets fetch cmapss_fd001
-rulsafe datasets fetch scania_component_x
-```
-
-`rulsafe datasets fetch` prints the card and then stops. The C-MAPSS download is `rulsafe data fetch cmapss`. The SCANIA fetch stops because that dataset is v0.2.
-
-Exit codes: `0` finished with no confirmed `fail_on` finding, `1` confirmed leakage, `2` usage or configuration error. Commands that are still stubs (`check`, `train`, `init`, `inspect`, `report`) use `2`.
-
-### Python
 
 ```python
 from rulsafe import load_config, run_pipeline
-from rulsafe.report.json import MetricValue
 
-config = load_config("examples/cmapss_fd001_completed_trajectory.yaml")
-config.project.name
-config.labeling.censored_policy.value  # "reject" or "report"
-
-# The C-MAPSS config needs the tables from `rulsafe data fetch cmapss`.
-# result = run_pipeline(config, output_directory=Path("rulsafe-runs/demo"))
-# That writes report.json and report.html. The headline test is the last
-# observation of each official test engine against RUL_FD001.txt.
-
-MetricValue.disabled().to_json()
-# {"value": null, "status": "DISABLED"}
-
-MetricValue.not_computed().to_json()
-# {"value": null, "status": "NOT_COMPUTED"}
-
-MetricValue.computed(12.5).to_json()
-# {"value": 12.5, "status": "COMPUTED"}
+result = run_pipeline(load_config("run.yaml"))
+print(result.report_paths.html_path)
+print(result.leakage.worst_status.value)
 ```
 
-`run_pipeline` fits the completed-trajectory pipeline and writes both report files. Call `load_config` or `RunConfig.from_mapping` to validate a mapping without YAML. A disabled metric was not requested. A not-computed metric is in scope but has no number, and an empty split records that reason in `risks`. Neither is stored as `0`. `censored_policy: reject` writes `report.json` and `report.html` with `"status": "FAILED"`, the contract violations, and `"metrics": null`, then raises `ContractError`.
+`validate` checks the schema only. `run_pipeline` reads the files, fits the
+sanity-check baselines, audits the run, and writes reports. A confirmed
+`fail_on` violation writes a `FAILED` report and raises `ContractError`.
+`censored_policy: reject` also writes a partial failed report with metrics null.
+The CLI commands `init`, `profile`, `check`, `train`, and `report` are explicit
+stubs in v0.1; use `run_pipeline` for your own data.
 
-## v0.1 contract
+## Example report
 
-- **Question.** Remaining useful life on a completed trajectory. C-MAPSS test engines are scored at the **last observation** only.
-- **Splits.** `official_partitions` or `group_holdout`. Train, validation, and final test stay apart. A random panel split is an error. `global_time` is rejected: it is deferred to v0.2. The model is selected on validation root-mean-square error. Those validation metrics are labeled `used for early stopping/selection`. The headline evaluation is the test split. `min_assets_per_split` defaults to 3. A smaller split, including a one-asset validation or test split, is a warning in `risks`. An empty split is `NOT_COMPUTED` and the risk says so.
-- **Features.** At time `t`, a feature uses only records knowable at `t`. The default gap policy is `none`. Bounded forward fill is allowed. Linear interpolation is rejected.
-- **Preprocessing.** Clip bounds and scalers fit on the training split only, with a membership record.
-- **Baselines.** A training constant, and one histogram gradient boosting model trained on the training split only with a fixed `random_state`. Early stopping uses the validation split and does not hold out training rows. Root-mean-square error and mean absolute error are the primary scores. The NASA asymmetric score is secondary and is never a gate. Persistence is rejected. Age and logistic regression are not in v0.1.
-- **Censored histories.** `censored_policy: reject` writes a partial report with status `FAILED`, lists each offending asset id with its signal, event, and prediction row counts, leaves metrics null, and then raises. `censored_policy: report` excludes the history from train, validation, and test, continues, and names it in the report. `drop` and `unknown_policy: exclude_from_loss` are errors.
-- **Audit.** Statuses are `CONFIRMED`, `WARNING`, `NOT_CHECKED`, and `PASS`. A check with no finding is reported as `NOT_CHECKED`, not as a pass. A metric with no number serialises as `{"value": null, "status": "NOT_COMPUTED"}` or `{"value": null, "status": "DISABLED"}`. It is not stored as zero.
-- **Not in v0.1.** `global_time` and `alerts` are rejected with an error that they are deferred to v0.2. They are not dropped silently.
+Excerpt from an actual noisy-fleet run, omitting other fields:
 
-## Roadmap
+```json
+{
+  "status": "COMPLETED",
+  "headline_model": "hist_gradient_boosting",
+  "headline_split": "test",
+  "censored_or_unsupported_asset_ids": ["unit-censored"],
+  "metrics": {
+    "test": {
+      "hist_gradient_boosting_root_mean_square_error": {
+        "value": 1.9655398693652688,
+        "status": "COMPUTED"
+      }
+    }
+  }
+}
+```
 
-**In this release**
+Run status and leakage findings are separate. `COMPLETED` can include a
+`WARNING`. Each finding names the check, evidence, and a remedy:
 
-- Causal windows, labels, and the train / validation / test splitters, with synthetic fixtures under `tests/fixtures/synthetic_panel/`
-- Train-only clip percentiles and scaling, and the constant and histogram gradient boosting baselines
-- A planted `CONFIRMED` case and a clean `PASS` for each `fail_on` check
-- Official FD001 last-observation scoring against `RUL_FD001.txt`, with the NASA score summed once per engine
-- `report.json` and `report.html`, with documented leakage coverage
-- `rulsafe demo cmapss` after `rulsafe data fetch cmapss`
-- Invariance tests: future rows do not change earlier features; final-test labels do not move the fitted model or the validation choice
+| Finding status | How to read it |
+| --- | --- |
+| `CONFIRMED` | A concrete violation was found; a configured `fail_on` check stops the run. |
+| `WARNING` | A heuristic suggests investigation, such as high correlation with the label. |
+| `NOT_CHECKED` | The check lacked data or did not run. This is not a pass. |
+| `PASS` | The check ran and found no violation in its scope. |
 
-A Rich terminal summary is still a stub.
+The report records train/validation/test membership, training-only transformer
+membership, excluded histories, model choice, and test confidence intervals.
+A metric with no result has a null value and status `NOT_COMPUTED` or `DISABLED`;
+it is never replaced with zero. Small splits warn; empty splits have no score.
+See [audit coverage and limits](docs/leakage.md).
 
-**v0.2 and later, only if the completed-trajectory toolkit is in use**
+## FD001 benchmark
 
-- SCANIA Component X under its official protocol (105 signal columns, CC BY 4.0 printed separately, no reconstructed hidden time-to-event on the official validation and test sets)
-- Censored fleet labels: positive, negative, and unknown, kept in the export
-- `global_time` splits
-- Fleet alert metrics: event recall, lead time, false alerts per asset-time
-- Optional industry datasets. They are not a v0.1 benchmark harness.
-
-Out of scope until someone asks: a user interface, warehouse connectors, Chronos, AutoGluon, and publishing to PyPI.
-
-## Related work
-
-[CeRULEo](https://github.com/lucianolorenti/ceruleo) (Lorenti and Susto, *Journal of Open Source Software* 8(88), 5294, 2023, [doi:10.21105/joss.05294](https://doi.org/10.21105/joss.05294)) is a toolkit of remaining-useful-life methods. [RTX Providence](https://github.com/rtx-corp-open-source/providence) (Fox, Zimmerman, Daly, O'Keeffe and Verleyen, IEEE Aerospace Conference 2022, [doi:10.1109/AERO53065.2022.9843469](https://doi.org/10.1109/AERO53065.2022.9843469)) is a neural time-to-event research framework. The GitHub API reports Providence's licence as Other / `NOASSERTION`; this project does not assign it an SPDX identifier.
-
-Neither package is this audit. This release keeps a named train / validation / test protocol, training-only preprocessing, and an explicit disposition for histories it cannot score.
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short path:
+Use NASA's official C-MAPSS FD001 files:
 
 ```bash
-python -m pip install --require-hashes --only-binary=:all: -r requirements/dev-3.12.lock
-python -m pip install --no-deps --no-build-isolation -e .
-pre-commit install
-pre-commit run --all-files
-ruff check .
-mypy src
-pytest
+rulsafe data fetch cmapss
+rulsafe demo cmapss --output rulsafe-runs/cmapss
 ```
 
-Use the lock whose name matches the interpreter (`dev-3.11.lock`, `dev-3.12.lock`, or `dev-3.13.lock`). The supply-chain notes are in [ADR-010](docs/decisions/ADR-010-security-supply-chain.md).
+The fetch checks pinned hashes. Raw NASA files are not bundled or committed.
+The headline evaluation scores the last observed cycle of each of the 100
+official test engines against `RUL_FD001.txt`. The RUL cap is 125, seed 7,
+and lookback 16, with last value, mean, and slope from records knowable at the
+prediction time. Clipping and standard scaling fit only on the first 70
+completed training engines. The next 15 supply validation and early stopping;
+the remaining 15 supply a separate per-row test, not the official headline.
+Test truth is never a training label or a model-selection input.
 
-Licence: Apache-2.0. Dataset licences stay with the dataset owners. The wheel does not contain third-party data files.
+Fresh measurements at `cb1136e` with the committed locks:
+
+| Model | Official test RMSE (cycles) | 95% RMSE interval | MAE (cycles) | NASA score |
+| --- | ---: | ---: | ---: | ---: |
+| Histogram gradient boosting | 16.6554 | 13.85–19.20 | 12.12 | 665.73 |
+| Training-mean constant | 41.82 | 37.61–46.33 | 34.83 | 32028.68 |
+
+Intervals resample engines. The NASA score sums one asymmetric term per engine;
+it is not an average or a gate. Tree test metrics agree within `1e-9` across
+Python 3.11.17, 3.12.15, and 3.13.17. All 141 tests passed with 91.48%
+branch-inclusive coverage on each interpreter. These measurements describe
+this protocol and dataset, not accuracy on other equipment. C-MAPSS is
+simulated degradation data, not observations from a production fleet.
+
+FD001's association check is `PASS` (strongest training |r| 0.808989 for
+`sensor_17_mean`). Its delayed-record check is `NOT_CHECKED` because
+`available_at` is absent. See the [verification record](benchmarks/verification-cb1136e.md)
+and [source, protocol, hashes, and attribution](docs/cmapss-fd001.md).
+The NASA catalog does not specify a dataset licence. The separate Zenodo
+record's CC BY 4.0 statement applies to that record only.
+
+## Development and release status
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CHANGELOG.md](CHANGELOG.md), and
+[SECURITY.md](SECURITY.md). The repository remains private pending owner
+approval. No PyPI publication is part of release preparation.
+
+Code licence: [Apache-2.0](LICENSE). Dataset terms remain separate.
