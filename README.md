@@ -73,10 +73,13 @@ unit-01,13,13,failure,wear
 
 These are excerpts, not a sufficient training dataset. Supply the full histories
 of multiple independent machines for train, validation, and test. v0.1 requires
-one completed component history per ID; represent separate repaired/replaced
-histories with separate episode IDs. Keep failure notes and repair outcomes out
-of the sensor features. Histories without an observed terminal event must be
-rejected or reported as excluded, never silently treated as healthy.
+one completed component history per ID. Use separate episode IDs for repaired
+or replaced histories, and keep **all completed episodes of a physical machine
+in the same split** using caller-created partition files as described below. The
+ratio-split quickstart assumes one ID per independent physical machine.
+Keep failure notes and repair outcomes out of the sensor features. Histories
+without an observed terminal event must be rejected or reported as excluded,
+never silently treated as healthy.
 
 v0.1 also requires an **Assets** file listing all machine IDs, including those
 without a completed history. You can make `assets.csv` from your Readings:
@@ -171,6 +174,28 @@ result = run_pipeline(load_config("run.yaml"))
 print(result.report_paths.html_path)
 print(result.leakage.worst_status.value)
 ```
+
+For repeated episodes from the same physical machine, replace the `split`
+block with explicit partition files:
+
+```yaml
+split:
+  protocol: official_partitions
+  official_partitions:
+    train_ids: train_ids.txt
+    validation_ids: validation_ids.txt
+    test_ids: test_ids.txt
+```
+
+Each file contains one completed episode ID per line. Build those lists from
+the original physical-machine mapping so every completed episode of a machine
+goes to the same file. Leave censored and unsupported histories in the input
+tables, outside these partition lists; the report still names their exclusion.
+Despite the configuration name, these can be your own fixed partitions.
+In v0.1, `group_holdout.group_column` must equal `assets.id_column`; choosing
+another column is rejected because the splitter cannot group by it. The audit
+checks the supplied IDs and cannot infer shared physical hardware from episode
+names, so it does not verify that your parent-machine grouping is correct.
 
 `validate` checks the schema only. `run_pipeline` reads the files, fits the
 sanity-check baselines, audits the run, and writes reports. A confirmed

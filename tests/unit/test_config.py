@@ -157,6 +157,13 @@ def test_group_ratios_must_sum_to_one(load_example) -> None:
         RunConfig.from_mapping(document)
 
 
+def test_group_holdout_rejects_an_unsupported_parent_machine_column(load_example) -> None:
+    document = load_example("synthetic_fleet.yaml")
+    document["split"]["group_holdout"]["group_column"] = "physical_machine_id"
+    with pytest.raises(ConfigurationError, match="Use official_partitions"):
+        RunConfig.from_mapping(document)
+
+
 def test_global_time_is_deferred_to_v02(load_example) -> None:
     document = load_example("synthetic_panel.yaml")
     document["split"] = {

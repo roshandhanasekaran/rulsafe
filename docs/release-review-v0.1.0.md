@@ -1,8 +1,11 @@
 # v0.1.0 critical review and validation
 
-Review date: 2026-11-08. This is an implementation self-review with executable
-evidence, not an independent maintainer approval. The candidate remains in
-stacked PRs; `main` and repository visibility have not been changed.
+Review date: 2026-11-08. The initial implementation self-review was followed
+by a separate code-review agent and a QA agent, each independently inspecting
+and testing the five-PR candidate at `89863fd`. Both reproduced the grouping
+issue recorded below. These agent reviews do not replace an independent
+maintainer approval. Changes remain in stacked PRs; `main` and repository
+visibility have not been changed.
 
 ## Defects resolved
 
@@ -11,6 +14,7 @@ stacked PRs; `main` and repository visibility have not been changed.
 | Degenerate cross-version reference | The numerical guard locked RMSE near zero on a smoke panel where remaining life is a direct rearrangement of pressure. This could be mistaken for demo performance. | The guard now runs the noisy demo fleet with actual cross-version measurements and a strictly absolute tolerance. The panel stays in contract tests. FD001 is unaffected. |
 | Missing installed-demo resources | A built wheel failed outside the checkout because its YAML was absent; the FD001 path could fail before showing fetch instructions. | Bundle canonical YAML resources; generate first-party synthetic tables temporarily; run a clean installed-wheel check outside the checkout in CI. Test a poisoned local examples directory as well. |
 | Incomplete onboarding and scope statements | Old docs mixed working commands with stubs and did not provide an executable user-data column map. | Run every README Python snippet and YAML against renamed full input tables; compare the actual report with the documented excerpt. Explicitly state unsupported horizon tasks and date parsing. |
+| Repaired episodes can cross physical-machine splits | The new episode-ID advice did not preserve physical-machine holdout. The inherited splitter also accepted an alternate `group_column` but silently split episode IDs; both agents reproduced physical machines in train and test with `entity_leakage: PASS`. | Schema and pre-fit runtime guards now reject unsupported grouping. Three regressions check validation, a stored-config bypass, and valid machine-preserving partition files. README and audit docs require caller-constructed physical-machine partitions and state the audit cannot infer parent hardware. |
 | Incomplete release metadata | Version/citation still described the foundation; source links were absent and candidate distributions were not retained/tested as installed packages. | Prepare matching 0.1.0 metadata, explicit SPDX/license files, source links, clean-wheel checks, audited SBOM, and private artifact retention. No publication is configured. |
 
 ## Evidence
@@ -18,8 +22,11 @@ stacked PRs; `main` and repository visibility have not been changed.
 - Unmodified `cb1136e`: **141 passed, 91.48% branch-inclusive coverage** on
   Python **3.11.17, 3.12.15, 3.13.17**. These are the available interpreters,
   not the patch versions in the initial handoff.
-- Candidate runtime: **142 passed, 91.49% branch-inclusive coverage** on each
-  of the same interpreters, including the installed-demo regression.
+- Original candidate at `89863fd`: independently repeated **142 passed,
+  91.49% branch-inclusive coverage** on each interpreter.
+- Candidate with the grouping correction: **145 passed, 91.52%
+  branch-inclusive coverage** on each of Python **3.11.17, 3.12.15, 3.13.17**.
+  The three added tests check unsupported grouping and supplied partitions.
 - Official FD001: measured RMSE **16.65538791185784**, MAE
   **12.119968435305868**, NASA sum **665.7298894865181**, constant RMSE
   **41.821494536757605**. The 95% engine-bootstrap tree RMSE interval is
@@ -68,7 +75,11 @@ candidate and advisory snapshot, not a claim that all possible defects were foun
   SCANIA, global-time splits, alert metrics, and generic CLI `init`, `profile`,
   `check`, `train`, and `report` are deferred. Use the Python API for own data.
 - Inputs currently need numeric time and an explicit Assets list. Separate
-  repaired/replaced histories need separate component-episode IDs.
+  repaired/replaced histories need separate component-episode IDs, and all
+  completed episodes of each physical machine must stay in one supplied partition.
+  `group_holdout.group_column` must match `assets.id_column`; alternate parent
+  grouping is rejected. The audit does not infer shared physical hardware
+  from distinct episode IDs.
 - FD001 is simulated engine data and has no ingestion-delay field, so its
   delayed-record finding stays `NOT_CHECKED`. Its scores do not establish
   performance on a physical fleet.
@@ -88,5 +99,13 @@ Review the PRs and their final CI, approve their merge, and separately decide
 when to make the repository public. Publishing configuration, project-name
 registration, release date/tag, and PyPI publication require the owner's later
 release decision. The [release procedure](releasing.md) records those steps.
-No additional supported-v0.1 implementation defect is left open by this review;
-that conclusion does not replace an independent maintainer review.
+The independent code review and QA reproduced one material issue in this
+candidate: unsafe grouping guidance combined with an ignored grouping setting.
+The code reviewer rechecked the correction against the original counterexample,
+the `model_copy` bypass, explicit physical-machine partitions, and all three
+new regressions, finding no further issue. QA separately repeated the schema
+and pre-fit rejection paths, machine-preserving explicit partitions, the README
+quickstart, and a fresh runtime-only wheel installation. It found no remaining
+reproduced blocker. Physical-machine identity still depends on the caller's
+partition mapping. The corrected commit and artifacts must pass final CI and
+owner review; these agent checks do not replace an independent maintainer review.

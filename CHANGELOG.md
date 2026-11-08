@@ -27,6 +27,12 @@ pending owner approval.
 
 ### Fixed
 
+- Reject a `group_holdout.group_column` that differs from `assets.id_column`
+  instead of silently splitting episode IDs. Validation and the runtime
+  guard both stop unsupported grouping before fitting. Repaired histories
+  must use supplied partitions that keep every episode of a physical machine
+  together; documentation now states the audit cannot infer parent hardware
+  from episode IDs. Found independently by the code-review and QA agents.
 - Installed demos resolve bundled configurations outside a source checkout.
   Synthetic inputs are generated locally from the existing deterministic fleet;
   no dataset files are added to the wheel. Missing FD001 tables produce the
