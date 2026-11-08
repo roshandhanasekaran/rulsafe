@@ -86,3 +86,21 @@ def test_security_decision_is_proposed_or_accepted(repository_root: Path) -> Non
     assert "trusted publishing" in text
     assert "dev-3.11.lock" in text
     assert "dev-3.10.lock" not in text
+
+
+def test_publish_workflow_uses_release_gated_trusted_publishing(repository_root: Path) -> None:
+    """Publishing is release-only, artifact-separated, and uses environment-gated OIDC."""
+    workflow = (repository_root / ".github" / "workflows" / "publish.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "types: [published]" in workflow
+    assert "pull_request:" not in workflow
+    assert "push:" not in workflow
+    assert "needs: build" in workflow
+    assert "name: pypi" in workflow
+    assert "id-token: write" in workflow
+    assert "pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086" in workflow
+    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
+    assert "PYPI_API_TOKEN" not in workflow
+    assert "password:" not in workflow
+    assert "skip-existing" not in workflow

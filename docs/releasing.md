@@ -83,7 +83,12 @@ CI's build job retains the sdist, wheel, SHA256SUMS, and an audited CycloneDX
 JSON SBOM as a workflow artifact for review. The SBOM describes the entire
 Python 3.12 build/development lock, including tooling; it is not a runtime-only
 SBOM. Artifact storage inherits repository access, and retention is limited.
-There is no publishing job, `id-token: write` permission, or PyPI credential.
+
+`.github/workflows/publish.yml` runs only for a published GitHub Release. Its
+build job rechecks the exact tag and retains distributions separately from
+checksums and the SBOM. Its publish job has the only `id-token: write`
+permission and uses the protected `pypi` environment and a pinned trusted-
+publishing action. The repository stores no PyPI credential.
 
 ## After explicit owner approval
 
@@ -95,12 +100,12 @@ The following remain separate owner-controlled release actions:
   `rulsafe` project lookup returned HTTP 404 on 2026-11-08; this is not a
   reservation or a guarantee the name can be registered.
 - Set an actual release date in CHANGELOG/CITATION only when releasing.
-- Configure PyPI trusted publishing with a protected `pypi` environment and
+- Configure the PyPI pending publisher for repository `rulsafe`, workflow
+  `publish.yml`, and environment `pypi`. Protect that GitHub environment with
   explicit approval. Do not paste or commit publishing tokens.
 - Build and review artifacts from the approved final commit, verify hashes,
   then authorize tagging and publication as separate actions.
 
-[ADR-010](decisions/ADR-010-security-supply-chain.md) remains Proposed. Its
-SBOM recommendation is implemented by the candidate build job, but trusted
-publishing and maintainer acceptance are still deferred. No approval to
-publish or change visibility is implied by preparing the candidate.
+[ADR-010](decisions/ADR-010-security-supply-chain.md) is Accepted. Its SBOM and
+trusted-publishing controls are implemented, while the environment and PyPI
+publisher configuration remain owner-controlled release gates.
