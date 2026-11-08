@@ -16,6 +16,10 @@ pending owner approval.
 - Opt-in integration check on physical NASA battery sensor measurements with
   documented capacity-defined end-of-life labels and censored-cell reporting.
   Its single-cell held-out split is a smoke check, not a performance benchmark.
+- Opt-in integration check on physical NASA milling current, vibration, and
+  acoustic-emission measurements. A declared observed-wear threshold produces
+  15 completed cases and one censored case; the two-case held-out splits make
+  this a smoke check rather than a performance benchmark.
 - Equipment-agnostic introduction and an executable Readings / Events / Assets
   column-map quickstart. v0.1 supports completed-trajectory RUL; failure-within-
   horizon tasks and censored-fleet classification remain deferred.
