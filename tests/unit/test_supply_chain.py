@@ -110,12 +110,19 @@ def test_publish_workflow_uses_release_gated_trusted_publishing(repository_root:
     }
     assert jobs["publish"]["permissions"] == {"id-token": "write"}
 
-    publish_uses = [step.get("uses") for step in jobs["publish"]["steps"] if "uses" in step]
+    publish_steps = jobs["publish"]["steps"]
+    publish_uses = [step.get("uses") for step in publish_steps if "uses" in step]
+    download_steps = [
+        step
+        for step in publish_steps
+        if step.get("uses", "").startswith("actions/download-artifact@")
+    ]
     assert (
         publish_uses.count("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093")
         == 2
     )
     assert "pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086" in publish_uses
+    assert all(step["with"]["merge-multiple"] is True for step in download_steps)
     assert "artifact-ids" in workflow_text
     assert "sha256sum --check" in workflow_text
     assert "ref: ${{ github.sha }}" in workflow_text
