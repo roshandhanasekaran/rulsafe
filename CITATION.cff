@@ -4,8 +4,8 @@ message: Please cite this software if you use it.
 type: software
 authors:
   - name: RULSafe contributors
-version: 0.0.1
-date-released: 2026-11-07
+version: 0.1.0
+repository-code: https://github.com/roshandhanasekaran/rulsafe
 license: Apache-2.0
 abstract: >-
   Completed-trajectory remaining-useful-life checks for v0.1, with causal
