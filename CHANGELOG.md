@@ -27,6 +27,11 @@ pending owner approval.
 
 ### Fixed
 
+- Validate configured physical-table columns and cells before fitting. Missing
+  sensor columns, blank or repeated Assets IDs, malformed or non-finite numeric
+  values, and impossible `available_at` times now raise a configuration error.
+  Terminal histories with no pre-event reading are reported as unsupported,
+  and events for unregistered assets can no longer disappear from the audit.
 - Reject a `group_holdout.group_column` that differs from `assets.id_column`
   instead of silently splitting episode IDs. Validation and the runtime
   guard both stop unsupported grouping before fitting. Repaired histories
