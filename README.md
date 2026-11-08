@@ -207,8 +207,18 @@ names, so it does not verify that your parent-machine grouping is correct.
 sanity-check baselines, audits the run, and writes reports. A confirmed
 `fail_on` violation writes a `FAILED` report and raises `ContractError`.
 `censored_policy: reject` also writes a partial failed report with metrics null.
+The training constant is a required reference model. Every leakage check must
+be assigned to either `fail_on` or `warn_on`; moving a check to `warn_on` makes
+its finding non-fatal but does not hide or downgrade its observed status.
 The CLI commands `init`, `profile`, `check`, `train`, and `report` are explicit
 stubs in v0.1; use `run_pipeline` for your own data.
+
+The v0.1 schema rejects options that the runtime cannot yet honor. Static asset
+features, native datetime parsing, frequency resampling, observation-bound
+columns, a non-null prediction horizon, plot output, and Markdown reports are
+deferred. Replacement episodes must use separate IDs, with
+`replacement_starts_new_episode: true`. This prevents a configuration from
+appearing to take effect when the pipeline would otherwise ignore it.
 
 ## Example report
 

@@ -31,6 +31,14 @@ pending owner approval.
 
 ### Fixed
 
+- Reject schema options that the v0.1 runtime does not consume instead of
+  silently accepting them: static asset features, native datetimes, frequency
+  resampling, observation-bound columns, replacement episode spanning,
+  prediction horizons, plots, and Markdown output. Shipped configurations now
+  request an empty plot list until plot generation is implemented.
+- Require the constant reference model and an explicit `fail_on` or `warn_on`
+  action for every v0.1 leakage check. This prevents model and audit selection
+  fields from being accepted without a defined runtime effect.
 - Validate configured physical-table columns and cells before fitting. Missing
   sensor columns, blank or repeated Assets IDs, malformed or non-finite numeric
   values, and impossible `available_at` times now raise a configuration error.

@@ -82,6 +82,42 @@ def test_persistence_age_and_logistic_baselines_are_rejected(load_example) -> No
         reject_persistence_baseline("persist_previous_rul")
 
 
+def test_constant_baseline_is_required(load_example) -> None:
+    document = load_example("synthetic_panel.yaml")
+    models = document["models"]
+    assert isinstance(models, dict)
+    models["include"] = ["hist_gradient_boosting"]
+    with pytest.raises(ConfigurationError, match="must contain constant"):
+        RunConfig.from_mapping(document)
+
+
+def test_every_leakage_check_has_an_explicit_action(load_example) -> None:
+    document = load_example("synthetic_panel.yaml")
+    leakage = document["leakage"]
+    assert isinstance(leakage, dict)
+    warn_on = leakage["warn_on"]
+    assert isinstance(warn_on, list)
+    warn_on.remove("backend_internal_split")
+    with pytest.raises(ConfigurationError, match=r"must be listed.*backend_internal_split"):
+        RunConfig.from_mapping(document)
+
+    document = load_example("synthetic_panel.yaml")
+    leakage = document["leakage"]
+    assert isinstance(leakage, dict)
+    fail_on = leakage["fail_on"]
+    warn_on = leakage["warn_on"]
+    assert isinstance(fail_on, list)
+    assert isinstance(warn_on, list)
+    fail_on.remove("target_in_features")
+    warn_on.append("target_in_features")
+    config = RunConfig.from_mapping(document)
+    expected_fail_on = [
+        item for item in DEFAULT_FAIL_ON_CHECKS if item.value != "target_in_features"
+    ]
+    assert config.leakage.fail_on == expected_fail_on
+    assert config.leakage.warn_on[-1].value == "target_in_features"
+
+
 def test_random_split_and_interpolation_are_rejected(load_example) -> None:
     document = load_example("synthetic_panel.yaml")
     split = document["split"]
@@ -192,6 +228,51 @@ def test_alerts_are_deferred_to_v02(load_example) -> None:
     assert isinstance(evaluation, dict)
     evaluation["plots"] = ["alert_lead_times"]
     with pytest.raises(ConfigurationError, match=r"alerts are deferred to v0\.2"):
+        RunConfig.from_mapping(document)
+
+
+@pytest.mark.parametrize(
+    ("section_name", "field_name", "value", "message"),
+    [
+        ("assets", "extra_columns", ["manufacturer"], r"static features.*not implemented"),
+        ("signals", "timestamp_type", "datetime", r"datetime is not implemented"),
+        ("signals", "frequency", "1 hour", r"resampling is not implemented"),
+        (
+            "contract",
+            "observation_start_column",
+            "installed_at",
+            r"observation_start_column is not implemented",
+        ),
+        (
+            "contract",
+            "observation_end_column",
+            "removed_at",
+            r"observation_end_column is not implemented",
+        ),
+        (
+            "contract",
+            "replacement_starts_new_episode",
+            False,
+            r"replacement_starts_new_episode must be true",
+        ),
+        ("labeling", "horizon", 7, r"horizon is not implemented"),
+        ("evaluation", "plots", ["prediction_error"], r"plots output is not implemented"),
+        (
+            "report",
+            "formats",
+            ["html", "json", "markdown"],
+            r"Markdown report output is not implemented",
+        ),
+    ],
+)
+def test_unimplemented_config_options_are_rejected(
+    load_example, section_name: str, field_name: str, value: object, message: str
+) -> None:
+    document = load_example("synthetic_panel.yaml")
+    section = document[section_name]
+    assert isinstance(section, dict)
+    section[field_name] = value
+    with pytest.raises(ConfigurationError, match=message):
         RunConfig.from_mapping(document)
 
 
