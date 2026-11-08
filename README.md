@@ -289,6 +289,9 @@ record's CC BY 4.0 statement applies to that record only.
 An additional [physical NASA battery integration check](benchmarks/nasa-battery-smoke.md)
 exercises the generic input path. Its small cell count limits it to a smoke
 check; its scores are not a claim of battery-prediction accuracy.
+A separate [physical NASA milling check](benchmarks/nasa-milling-smoke.md) uses
+recorded spindle current, vibration, and acoustic-emission traces with a
+declared observed-wear event. Its small held-out case count has the same limit.
 
 ## Development and release status
 
